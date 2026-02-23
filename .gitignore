@@ -1,0 +1,18 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+
+# Env & Secrets
+.env.local
+.env*.local
+tmdb_api_key
+tmdb_read_access_token
+
+# Editor
+.vscode/
+.idea/
+
+# Logs
+*.log
