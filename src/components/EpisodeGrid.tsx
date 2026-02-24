@@ -21,39 +21,37 @@ interface EpisodeGridProps {
     tvId: number;
     seasonNumber: number;
     episodes: TMDBEpisode[];
+    metaPayload?: { name?: string; show_name?: string; poster_path?: string; episode_count?: number };
 }
 
-const EpisodeGrid: React.FC<EpisodeGridProps> = ({ tvId, seasonNumber, episodes }) => {
+const EpisodeGrid: React.FC<EpisodeGridProps> = ({ tvId, seasonNumber, episodes, metaPayload }) => {
     const theme = useTheme();
     const {
         toggleEpisodeWatched,
         watchUpToEpisode,
         setEpisodeComment,
         getEpisodeRecord,
-        ensureSeasonRecord,
     } = useProgressStore();
 
     const [snackbar, setSnackbar] = useState<string | null>(null);
     const [commentDialog, setCommentDialog] = useState<{ episode: TMDBEpisode; text: string } | null>(null);
 
-    // Ensure record exists
-    React.useEffect(() => {
-        ensureSeasonRecord(tvId, seasonNumber);
-    }, [tvId, seasonNumber, ensureSeasonRecord]);
+    // Records are created lazily when the user interacts (toggles an episode or sets status).
+    // Do NOT call ensureSeasonRecord here as it would create records for all visible seasons.
 
     const handleSingleClick = useCallback(
         (episodeNumber: number) => {
-            toggleEpisodeWatched(tvId, seasonNumber, episodeNumber);
+            toggleEpisodeWatched(tvId, seasonNumber, episodeNumber, metaPayload);
         },
-        [tvId, seasonNumber, toggleEpisodeWatched]
+        [tvId, seasonNumber, toggleEpisodeWatched, metaPayload]
     );
 
     const handleWatchUpTo = useCallback(
         (episodeNumber: number) => {
-            watchUpToEpisode(tvId, seasonNumber, episodeNumber, episodes.length);
+            watchUpToEpisode(tvId, seasonNumber, episodeNumber, episodes.length, metaPayload);
             setSnackbar(`已标记第 1 ~ ${episodeNumber} 集为已看 ✓`);
         },
-        [tvId, seasonNumber, episodes.length, watchUpToEpisode]
+        [tvId, seasonNumber, episodes.length, watchUpToEpisode, metaPayload]
     );
 
     const handleCommentRequest = useCallback((episode: TMDBEpisode) => {
@@ -84,10 +82,10 @@ const EpisodeGrid: React.FC<EpisodeGridProps> = ({ tvId, seasonNumber, episodes 
                     sx={{
                         flex: 1,
                         height: 6,
-                        borderRadius: 3,
+                        borderRadius: 1.5,
                         backgroundColor: alpha(primary, 0.15),
                         '& .MuiLinearProgress-bar': {
-                            borderRadius: 3,
+                            borderRadius: 1.5,
                             background: primary,
                         },
                     }}
@@ -132,7 +130,7 @@ const EpisodeGrid: React.FC<EpisodeGridProps> = ({ tvId, seasonNumber, episodes 
                     onClose={() => setSnackbar(null)}
                     severity="success"
                     variant="filled"
-                    sx={{ borderRadius: 4 }}
+                    sx={{ borderRadius: 2 }}
                 >
                     {snackbar}
                 </Alert>
@@ -144,7 +142,7 @@ const EpisodeGrid: React.FC<EpisodeGridProps> = ({ tvId, seasonNumber, episodes 
                 onClose={() => setCommentDialog(null)}
                 maxWidth="sm"
                 fullWidth
-                PaperProps={{ sx: { borderRadius: 4, backgroundColor: 'background.paper' } }}
+                PaperProps={{ sx: { borderRadius: 2, backgroundColor: 'background.paper' } }}
             >
                 <DialogTitle>
                     第 {commentDialog?.episode.episode_number} 集吐槽
@@ -173,7 +171,7 @@ const EpisodeGrid: React.FC<EpisodeGridProps> = ({ tvId, seasonNumber, episodes 
                     <Button onClick={() => setCommentDialog(null)} color="inherit">
                         取消
                     </Button>
-                    <Button onClick={handleCommentSave} variant="contained" sx={{ borderRadius: 4 }}>
+                    <Button onClick={handleCommentSave} variant="contained" sx={{ borderRadius: 2 }}>
                         保存吐槽
                     </Button>
                 </DialogActions>

@@ -23,11 +23,12 @@ import GlobalStatusPicker from './GlobalStatusPicker';
 
 interface SeasonBlockProps {
     tvId: number;
+    showName: string;
     seasonSummary: TMDBSeasonSummary;
     defaultExpanded?: boolean;
 }
 
-const SeasonBlock: React.FC<SeasonBlockProps> = ({ tvId, seasonSummary, defaultExpanded = false }) => {
+const SeasonBlock: React.FC<SeasonBlockProps> = ({ tvId, showName, seasonSummary, defaultExpanded = false }) => {
     const theme = useTheme();
     const [season, setSeason] = useState<TMDBSeason | null>(null);
     const [loading, setLoading] = useState(false);
@@ -39,7 +40,6 @@ const SeasonBlock: React.FC<SeasonBlockProps> = ({ tvId, seasonSummary, defaultE
         setSeasonStatus,
         setSeasonRating,
         setSeasonComment,
-        ensureSeasonRecord,
     } = useProgressStore();
 
     const record = getSeasonRecord(tvId, seasonSummary.season_number);
@@ -54,17 +54,23 @@ const SeasonBlock: React.FC<SeasonBlockProps> = ({ tvId, seasonSummary, defaultE
         }
     }, [expanded, tvId, seasonSummary.season_number, season, loading]);
 
-    useEffect(() => {
-        ensureSeasonRecord(tvId, seasonSummary.season_number);
-    }, [tvId, seasonSummary.season_number, ensureSeasonRecord]);
+    const metaPayload = {
+        name: seasonSummary.name,
+        show_name: showName,
+        poster_path: seasonSummary.poster_path,
+        episode_count: seasonSummary.episode_count,
+    };
 
-    const watchedCount = season
+    // NOTE: Do NOT call ensureSeasonRecord here.
+    // Records should only be created when the user explicitly sets a status.
+
+    const watchedCount = season && record
         ? season.episodes.filter(
-            (ep) => record?.episodes[String(ep.episode_number)]?.watched ?? false
+            (ep) => record.episodes[String(ep.episode_number)]?.watched ?? false
         ).length
         : 0;
 
-    const statusLabel = record ? STATUS_LABELS[record.global_status] : '想看';
+    const statusLabel = record?.global_status ? STATUS_LABELS[record.global_status] : null;
 
     return (
         <Accordion
@@ -73,7 +79,7 @@ const SeasonBlock: React.FC<SeasonBlockProps> = ({ tvId, seasonSummary, defaultE
             sx={{
                 backgroundColor: alpha(primary, 0.05),
                 border: `1px solid ${alpha(primary, 0.15)}`,
-                borderRadius: '16px !important',
+                borderRadius: '8px !important',
                 '&::before': { display: 'none' },
                 mb: 1.5,
                 '&.Mui-expanded': { my: 1.5 },
@@ -83,8 +89,8 @@ const SeasonBlock: React.FC<SeasonBlockProps> = ({ tvId, seasonSummary, defaultE
             <AccordionSummary
                 expandIcon={<ExpandMoreIcon sx={{ color: primary }} />}
                 sx={{
-                    borderRadius: '16px',
-                    '&.Mui-expanded': { borderRadius: '16px 16px 0 0' },
+                    borderRadius: '8px',
+                    '&.Mui-expanded': { borderRadius: '8px 8px 0 0' },
                     px: 2,
                     py: 0.5,
                 }}
@@ -105,32 +111,35 @@ const SeasonBlock: React.FC<SeasonBlockProps> = ({ tvId, seasonSummary, defaultE
                             sx={{ backgroundColor: alpha('#4CAF50', 0.15), color: '#4CAF50', fontWeight: 600, fontSize: '0.7rem' }}
                         />
                     )}
-                    <Chip
-                        label={statusLabel}
-                        size="small"
-                        sx={{ backgroundColor: alpha(primary, 0.2), color: primary, fontWeight: 600, fontSize: '0.7rem' }}
-                    />
+                    {statusLabel && (
+                        <Chip
+                            label={statusLabel}
+                            size="small"
+                            sx={{ backgroundColor: alpha(primary, 0.2), color: primary, fontWeight: 600, fontSize: '0.7rem' }}
+                        />
+                    )}
                 </Box>
             </AccordionSummary>
 
             <AccordionDetails sx={{ px: 2, pb: 2 }}>
-                {/* Status & Rating */}
-                {record && (
-                    <Box sx={{ mb: 2 }}>
-                        <GlobalStatusPicker
-                            status={record.global_status}
-                            rating={record.rating}
-                            onStatusChange={(s: WatchStatus) => setSeasonStatus(tvId, seasonSummary.season_number, s)}
-                            onRatingChange={(r) => setSeasonRating(tvId, seasonSummary.season_number, r)}
-                        />
-                    </Box>
-                )}
+                {/* Status & Rating - only render when accordion is open */}
+                <Box sx={{ mb: 2 }}>
+                    <GlobalStatusPicker
+                        status={record?.global_status ?? undefined}
+                        rating={record?.rating ?? 0}
+                        onStatusChange={(s: WatchStatus) => {
+                            // This is the primary trigger that creates the record and sets status
+                            setSeasonStatus(tvId, seasonSummary.season_number, s, metaPayload);
+                        }}
+                        onRatingChange={(r) => setSeasonRating(tvId, seasonSummary.season_number, r)}
+                    />
+                </Box>
 
                 {/* Episodes Loading Skeleton */}
                 {loading && (
                     <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: '6px', mb: 2 }}>
                         {Array.from({ length: seasonSummary.episode_count }).map((_, i) => (
-                            <Skeleton key={i} variant="rounded" width={36} height={36} sx={{ borderRadius: '8px' }} />
+                            <Skeleton key={i} variant="rounded" width={36} height={36} sx={{ borderRadius: '4px' }} />
                         ))}
                     </Box>
                 )}
@@ -141,6 +150,7 @@ const SeasonBlock: React.FC<SeasonBlockProps> = ({ tvId, seasonSummary, defaultE
                         tvId={tvId}
                         seasonNumber={seasonSummary.season_number}
                         episodes={season.episodes}
+                        metaPayload={metaPayload}
                     />
                 )}
 

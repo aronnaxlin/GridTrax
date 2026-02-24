@@ -13,14 +13,12 @@ import {
     TextField,
     Typography,
 } from '@mui/material';
-import { alpha, ThemeProvider, useTheme } from '@mui/material/styles';
+import { alpha, useTheme } from '@mui/material/styles';
 import React, { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { getBackdropUrl, getMovie, getPosterUrl } from '../api/tmdb';
 import GlobalStatusPicker from '../components/GlobalStatusPicker';
-import { useDynamicTheme } from '../hooks/useDynamicTheme';
 import { useProgressStore } from '../store/useProgressStore';
-import { createAppTheme } from '../theme/theme';
 import type { TMDBMovie, WatchStatus } from '../types';
 
 const MovieDetailPage: React.FC = () => {
@@ -46,22 +44,19 @@ const MovieDetailPage: React.FC = () => {
         getMovie(Number(id))
             .then((m) => {
                 setMovie(m);
-                ensureMovieRecord(m.id);
+                ensureMovieRecord(m.id, { name: m.title, poster_path: m.poster_path });
             })
             .catch(() => setError('加载失败，请刷新重试。'))
             .finally(() => setLoading(false));
     }, [id, ensureMovieRecord]);
 
-    const posterUrl = movie?.poster_path ? getPosterUrl(movie.poster_path, 'w342') : undefined;
-    const dynamicColor = useDynamicTheme(posterUrl);
-    const dynamicTheme = createAppTheme(dynamicColor);
-    const primary = dynamicColor ?? theme.palette.primary.main;
+    const primary = theme.palette.primary.main;
 
     const record = movie ? getMovieRecord(movie.id) : undefined;
 
     return (
-        <ThemeProvider theme={dynamicTheme}>
-            <Box sx={{ minHeight: '100vh', backgroundColor: '#141218' }}>
+        <React.Fragment>
+            <Box sx={{ minHeight: '100vh', backgroundColor: theme.palette.background.default }}>
                 {/* Backdrop */}
                 <Box sx={{ position: 'relative', height: { xs: 220, sm: 300, md: 380 }, overflow: 'hidden', mb: -6 }}>
                     {movie?.backdrop_path && (
@@ -75,7 +70,7 @@ const MovieDetailPage: React.FC = () => {
                     <Box
                         sx={{
                             position: 'absolute', bottom: 0, left: 0, right: 0, height: '80%',
-                            background: 'linear-gradient(to bottom, transparent, #141218)',
+                            background: `linear-gradient(to bottom, transparent, ${theme.palette.background.default})`,
                         }}
                     />
                     <IconButton
@@ -90,12 +85,12 @@ const MovieDetailPage: React.FC = () => {
                     </IconButton>
                 </Box>
 
-                <Container maxWidth="md" sx={{ pt: 6, pb: 8 }}>
+                <Container maxWidth="md" sx={{ pt: 6, pb: 8, overflow: 'visible' }}>
                     {error && <Alert severity="error" sx={{ mb: 3 }}>{error}</Alert>}
 
                     {loading ? (
                         <Box sx={{ display: 'flex', gap: 3 }}>
-                            <Skeleton variant="rounded" width={140} height={210} sx={{ borderRadius: 3, flexShrink: 0 }} />
+                            <Skeleton variant="rounded" width={140} height={210} sx={{ borderRadius: 1.5, flexShrink: 0 }} />
                             <Box sx={{ flex: 1 }}>
                                 <Skeleton variant="text" width="60%" height={40} />
                                 <Skeleton variant="text" width="30%" height={24} sx={{ mb: 1 }} />
@@ -112,10 +107,14 @@ const MovieDetailPage: React.FC = () => {
                                     alt={movie.title}
                                     sx={{
                                         width: { xs: 100, sm: 150 },
-                                        borderRadius: 3,
+                                        aspectRatio: '2/3',
+                                        objectFit: 'cover',
+                                        borderRadius: 2,
                                         boxShadow: `0 8px 32px ${alpha(primary, 0.4)}`,
                                         flexShrink: 0,
                                         mt: -4,
+                                        position: 'relative',
+                                        zIndex: 2,
                                     }}
                                 />
                                 <Box sx={{ flex: 1 }}>
@@ -166,7 +165,7 @@ const MovieDetailPage: React.FC = () => {
                             <Box
                                 sx={{
                                     p: 3,
-                                    borderRadius: 4,
+                                    borderRadius: 2,
                                     backgroundColor: alpha(primary, 0.06),
                                     border: `1px solid ${alpha(primary, 0.15)}`,
                                     mb: 2,
@@ -177,9 +176,9 @@ const MovieDetailPage: React.FC = () => {
                                 </Typography>
                                 {record && (
                                     <GlobalStatusPicker
-                                        status={record.global_status}
+                                        status={record.global_status || 'Wish'}
                                         rating={record.rating}
-                                        onStatusChange={(s: WatchStatus) => setMovieStatus(movie.id, s)}
+                                        onStatusChange={(s: WatchStatus) => setMovieStatus(movie.id, s, { name: movie.title, poster_path: movie.poster_path })}
                                         onRatingChange={(r) => setMovieRating(movie.id, r)}
                                     />
                                 )}
@@ -213,7 +212,7 @@ const MovieDetailPage: React.FC = () => {
                     ) : null}
                 </Container>
             </Box>
-        </ThemeProvider>
+        </React.Fragment>
     );
 };
 

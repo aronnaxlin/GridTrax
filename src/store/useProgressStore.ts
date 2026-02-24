@@ -11,16 +11,17 @@ import type {
 interface ProgressState {
     data: ProgressData;
     // TV Season actions
-    ensureSeasonRecord: (tvId: number, seasonNumber: number) => void;
-    toggleEpisodeWatched: (tvId: number, seasonNumber: number, episodeNumber: number) => void;
-    watchUpToEpisode: (tvId: number, seasonNumber: number, episodeNumber: number, totalEpisodes: number) => void;
+    // TV Season actions
+    ensureSeasonRecord: (tvId: number, seasonNumber: number, meta?: { name?: string; show_name?: string; poster_path?: string; episode_count?: number }) => void;
+    toggleEpisodeWatched: (tvId: number, seasonNumber: number, episodeNumber: number, meta?: { name?: string; show_name?: string; poster_path?: string; episode_count?: number }) => void;
+    watchUpToEpisode: (tvId: number, seasonNumber: number, episodeNumber: number, totalEpisodes: number, meta?: { name?: string; show_name?: string; poster_path?: string; episode_count?: number }) => void;
     setEpisodeComment: (tvId: number, seasonNumber: number, episodeNumber: number, comment: string) => void;
-    setSeasonStatus: (tvId: number, seasonNumber: number, status: WatchStatus) => void;
+    setSeasonStatus: (tvId: number, seasonNumber: number, status: WatchStatus, meta?: { name?: string; show_name?: string; poster_path?: string; episode_count?: number }) => void;
     setSeasonRating: (tvId: number, seasonNumber: number, rating: number) => void;
     setSeasonComment: (tvId: number, seasonNumber: number, comment: string) => void;
     // Movie actions
-    ensureMovieRecord: (movieId: number) => void;
-    setMovieStatus: (movieId: number, status: WatchStatus) => void;
+    ensureMovieRecord: (movieId: number, meta?: { name?: string; poster_path?: string }) => void;
+    setMovieStatus: (movieId: number, status: WatchStatus, meta?: { name?: string; poster_path?: string }) => void;
     setMovieRating: (movieId: number, rating: number) => void;
     setMovieComment: (movieId: number, comment: string) => void;
     // Getters
@@ -32,20 +33,26 @@ interface ProgressState {
 const seasonKey = (tvId: number, seasonNumber: number) => `tmdb_tv_${tvId}_s${seasonNumber}`;
 const movieKey = (movieId: number) => `tmdb_movie_${movieId}`;
 
-const defaultSeasonRecord = (tvId: number, seasonNumber: number): SeasonRecord => ({
+const defaultSeasonRecord = (tvId: number, seasonNumber: number, meta?: { name?: string; show_name?: string; poster_path?: string; episode_count?: number }): SeasonRecord => ({
     type: 'tv_season',
     tmdb_id: tvId,
     season_number: seasonNumber,
-    global_status: 'Wish',
+    name: meta?.name,
+    show_name: meta?.show_name,
+    poster_path: meta?.poster_path,
+    episode_count: meta?.episode_count,
+    global_status: undefined,
     rating: 0,
     global_comment: '',
     episodes: {},
 });
 
-const defaultMovieRecord = (movieId: number): MovieRecord => ({
+const defaultMovieRecord = (movieId: number, meta?: { name?: string; poster_path?: string }): MovieRecord => ({
     type: 'movie',
     tmdb_id: movieId,
-    global_status: 'Wish',
+    name: meta?.name,
+    poster_path: meta?.poster_path,
+    global_status: undefined,
     rating: 0,
     global_comment: '',
 });
@@ -61,7 +68,7 @@ export const useProgressStore = create<ProgressState>()(
                 records: {},
             },
 
-            ensureSeasonRecord: (tvId, seasonNumber) => {
+            ensureSeasonRecord: (tvId, seasonNumber, meta) => {
                 const key = seasonKey(tvId, seasonNumber);
                 if (!get().data.records[key]) {
                     set((state) => ({
@@ -69,16 +76,33 @@ export const useProgressStore = create<ProgressState>()(
                             ...state.data,
                             records: {
                                 ...state.data.records,
-                                [key]: defaultSeasonRecord(tvId, seasonNumber),
+                                [key]: defaultSeasonRecord(tvId, seasonNumber, meta),
                             },
                         },
                     }));
+                } else if (meta) {
+                    // Update meta if provided and missing
+                    set((state) => {
+                        const rec = state.data.records[key] as SeasonRecord;
+                        if (!rec.name || !rec.poster_path || !rec.show_name) {
+                            return {
+                                data: {
+                                    ...state.data,
+                                    records: {
+                                        ...state.data.records,
+                                        [key]: { ...rec, ...meta }
+                                    }
+                                }
+                            };
+                        }
+                        return state;
+                    });
                 }
             },
 
-            toggleEpisodeWatched: (tvId, seasonNumber, episodeNumber) => {
+            toggleEpisodeWatched: (tvId, seasonNumber, episodeNumber, meta) => {
                 const key = seasonKey(tvId, seasonNumber);
-                get().ensureSeasonRecord(tvId, seasonNumber);
+                get().ensureSeasonRecord(tvId, seasonNumber, meta);
                 set((state) => {
                     const record = state.data.records[key] as SeasonRecord;
                     const epKey = String(episodeNumber);
@@ -102,9 +126,9 @@ export const useProgressStore = create<ProgressState>()(
                 });
             },
 
-            watchUpToEpisode: (tvId, seasonNumber, episodeNumber, totalEpisodes) => {
+            watchUpToEpisode: (tvId, seasonNumber, episodeNumber, totalEpisodes, meta) => {
                 const key = seasonKey(tvId, seasonNumber);
-                get().ensureSeasonRecord(tvId, seasonNumber);
+                get().ensureSeasonRecord(tvId, seasonNumber, meta);
                 set((state) => {
                     const record = state.data.records[key] as SeasonRecord;
                     const updatedEpisodes = { ...record.episodes };
@@ -151,15 +175,25 @@ export const useProgressStore = create<ProgressState>()(
                 });
             },
 
-            setSeasonStatus: (tvId, seasonNumber, status) => {
+            setSeasonStatus: (tvId, seasonNumber, status, meta) => {
                 const key = seasonKey(tvId, seasonNumber);
-                get().ensureSeasonRecord(tvId, seasonNumber);
+                get().ensureSeasonRecord(tvId, seasonNumber, meta);
                 set((state) => ({
                     data: {
                         ...state.data,
                         records: {
                             ...state.data.records,
-                            [key]: { ...(state.data.records[key] as SeasonRecord), global_status: status },
+                            [key]: {
+                                ...(state.data.records[key] as SeasonRecord),
+                                global_status: status,
+                                // Always persist meta when explicitly setting status
+                                ...(meta ? {
+                                    name: meta.name ?? (state.data.records[key] as SeasonRecord)?.name,
+                                    show_name: meta.show_name ?? (state.data.records[key] as SeasonRecord)?.show_name,
+                                    poster_path: meta.poster_path ?? (state.data.records[key] as SeasonRecord)?.poster_path,
+                                    episode_count: meta.episode_count ?? (state.data.records[key] as SeasonRecord)?.episode_count,
+                                } : {}),
+                            },
                         },
                     },
                 }));
@@ -193,7 +227,7 @@ export const useProgressStore = create<ProgressState>()(
                 }));
             },
 
-            ensureMovieRecord: (movieId) => {
+            ensureMovieRecord: (movieId, meta) => {
                 const key = movieKey(movieId);
                 if (!get().data.records[key]) {
                     set((state) => ({
@@ -201,16 +235,32 @@ export const useProgressStore = create<ProgressState>()(
                             ...state.data,
                             records: {
                                 ...state.data.records,
-                                [key]: defaultMovieRecord(movieId),
+                                [key]: defaultMovieRecord(movieId, meta),
                             },
                         },
                     }));
+                } else if (meta) {
+                    set((state) => {
+                        const rec = state.data.records[key] as MovieRecord;
+                        if (!rec.name || !rec.poster_path) {
+                            return {
+                                data: {
+                                    ...state.data,
+                                    records: {
+                                        ...state.data.records,
+                                        [key]: { ...rec, ...meta }
+                                    }
+                                }
+                            };
+                        }
+                        return state;
+                    });
                 }
             },
 
-            setMovieStatus: (movieId, status) => {
+            setMovieStatus: (movieId, status, meta) => {
                 const key = movieKey(movieId);
-                get().ensureMovieRecord(movieId);
+                get().ensureMovieRecord(movieId, meta);
                 set((state) => ({
                     data: {
                         ...state.data,

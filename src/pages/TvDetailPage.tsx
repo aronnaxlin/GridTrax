@@ -9,13 +9,11 @@ import {
     Skeleton,
     Typography,
 } from '@mui/material';
-import { alpha, ThemeProvider, useTheme } from '@mui/material/styles';
+import { alpha, useTheme } from '@mui/material/styles';
 import React, { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { getBackdropUrl, getPosterUrl, getTVShow } from '../api/tmdb';
 import SeasonBlock from '../components/SeasonBlock';
-import { useDynamicTheme } from '../hooks/useDynamicTheme';
-import { createAppTheme } from '../theme/theme';
 import type { TMDBTVShow } from '../types';
 
 const TvDetailPage: React.FC = () => {
@@ -34,11 +32,8 @@ const TvDetailPage: React.FC = () => {
             .finally(() => setLoading(false));
     }, [id]);
 
-    const posterUrl = show?.poster_path ? getPosterUrl(show.poster_path, 'w342') : undefined;
-    const dynamicColor = useDynamicTheme(posterUrl);
-    const dynamicTheme = createAppTheme(dynamicColor);
     const theme = useTheme();
-    const primary = dynamicColor ?? theme.palette.primary.main;
+    const primary = theme.palette.primary.main;
 
     const backdropUrl = show?.backdrop_path ? getBackdropUrl(show.backdrop_path) : '';
 
@@ -46,8 +41,8 @@ const TvDetailPage: React.FC = () => {
     const regularSeasons = show?.seasons.filter((s) => s.season_number > 0) ?? [];
 
     return (
-        <ThemeProvider theme={dynamicTheme}>
-            <Box sx={{ minHeight: '100vh', backgroundColor: '#141218' }}>
+        <React.Fragment>
+            <Box sx={{ minHeight: '100vh', backgroundColor: theme.palette.background.default }}>
                 {/* Backdrop Hero */}
                 <Box
                     sx={{
@@ -77,7 +72,7 @@ const TvDetailPage: React.FC = () => {
                             left: 0,
                             right: 0,
                             height: '80%',
-                            background: 'linear-gradient(to bottom, transparent, #141218)',
+                            background: `linear-gradient(to bottom, transparent, ${theme.palette.background.default})`,
                         }}
                     />
                     {/* Back button */}
@@ -101,7 +96,7 @@ const TvDetailPage: React.FC = () => {
 
                     {loading ? (
                         <Box sx={{ display: 'flex', gap: 3 }}>
-                            <Skeleton variant="rounded" width={140} height={210} sx={{ borderRadius: 3, flexShrink: 0 }} />
+                            <Skeleton variant="rounded" width={140} height={210} sx={{ borderRadius: 1.5, flexShrink: 0 }} />
                             <Box sx={{ flex: 1 }}>
                                 <Skeleton variant="text" width="60%" height={40} />
                                 <Skeleton variant="text" width="30%" height={24} sx={{ mb: 1 }} />
@@ -119,10 +114,14 @@ const TvDetailPage: React.FC = () => {
                                     alt={show.name}
                                     sx={{
                                         width: { xs: 100, sm: 140 },
-                                        borderRadius: 3,
+                                        aspectRatio: '2/3',
+                                        objectFit: 'cover',
+                                        borderRadius: 2,
                                         boxShadow: `0 8px 32px ${alpha(primary, 0.4)}`,
                                         flexShrink: 0,
                                         mt: -4,
+                                        position: 'relative',
+                                        zIndex: 2,
                                     }}
                                 />
                                 {/* Info */}
@@ -185,6 +184,7 @@ const TvDetailPage: React.FC = () => {
                                 <SeasonBlock
                                     key={season.id}
                                     tvId={show.id}
+                                    showName={show.name}
                                     seasonSummary={season}
                                     defaultExpanded={idx === 0}
                                 />
@@ -193,7 +193,7 @@ const TvDetailPage: React.FC = () => {
                     ) : null}
                 </Container>
             </Box>
-        </ThemeProvider>
+        </React.Fragment>
     );
 };
 

@@ -1,3 +1,4 @@
+import StarIcon from '@mui/icons-material/Star';
 import {
     Box,
     Card,
@@ -33,7 +34,7 @@ const MediaCard: React.FC<MediaCardProps> = ({ item, onClick }) => {
                 transition: 'transform 200ms ease, box-shadow 200ms ease',
                 '&:hover': {
                     transform: 'translateY(-4px)',
-                    boxShadow: '0 12px 40px rgba(0,0,0,0.4)',
+                    boxShadow: '0 8px 24px rgba(0,0,0,0.2)',
                 },
             }}
         >
@@ -56,7 +57,8 @@ const MediaCard: React.FC<MediaCardProps> = ({ item, onClick }) => {
                     {/* Score badge */}
                     {item.vote_average && item.vote_average > 0 && (
                         <Chip
-                            label={`⭐ ${score}`}
+                            icon={<StarIcon sx={{ color: '#FFD54F !important', fontSize: '14px' }} />}
+                            label={score}
                             size="small"
                             sx={{
                                 position: 'absolute',

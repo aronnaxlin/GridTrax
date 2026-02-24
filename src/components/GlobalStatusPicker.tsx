@@ -5,7 +5,7 @@ import type { WatchStatus } from '../types';
 import { STATUS_LABELS } from '../types';
 
 interface GlobalStatusPickerProps {
-    status: WatchStatus;
+    status?: WatchStatus;
     rating: number;
     onStatusChange: (status: WatchStatus) => void;
     onRatingChange: (rating: number) => void;
@@ -29,6 +29,8 @@ const GlobalStatusPicker: React.FC<GlobalStatusPickerProps> = ({
 }) => {
     const theme = useTheme();
     const primary = theme.palette.primary.main;
+    const [hoverRating, setHoverRating] = React.useState<number | null>(null);
+    const displayScore = hoverRating ?? (rating > 0 ? rating : null);
 
     return (
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
@@ -55,7 +57,7 @@ const GlobalStatusPicker: React.FC<GlobalStatusPickerProps> = ({
                         sx={{
                             px: 1.5,
                             py: 0.5,
-                            borderRadius: '20px !important',
+                            borderRadius: '8px !important',
                             fontSize: '0.75rem',
                             fontWeight: 600,
                             color: status === s ? '#000' : 'text.secondary',
@@ -82,15 +84,24 @@ const GlobalStatusPicker: React.FC<GlobalStatusPickerProps> = ({
                     max={10}
                     value={rating}
                     onChange={(_, val) => onRatingChange(val ?? 0)}
+                    onChangeActive={(_, val) => setHoverRating(val > 0 ? val : null)}
                     size="small"
                     sx={{
                         '& .MuiRating-iconFilled': { color: primary },
                         '& .MuiRating-iconHover': { color: alpha(primary, 0.7) },
                     }}
                 />
-                {rating > 0 && (
-                    <Typography variant="caption" sx={{ color: primary, fontWeight: 700 }}>
-                        {rating}/10
+                {displayScore && (
+                    <Typography
+                        variant="caption"
+                        sx={{
+                            color: hoverRating ? 'text.primary' : primary,
+                            fontWeight: 700,
+                            minWidth: 36,
+                            transition: 'color 150ms ease',
+                        }}
+                    >
+                        {displayScore}/10
                     </Typography>
                 )}
             </Box>

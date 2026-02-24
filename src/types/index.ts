@@ -87,8 +87,12 @@ export interface SeasonRecord {
   type: 'tv_season';
   tmdb_id: number;
   season_number: number;
+  name?: string;
+  show_name?: string;
+  poster_path?: string;
+  episode_count?: number;
   bangumi_subject_id?: number;
-  global_status: WatchStatus;
+  global_status?: WatchStatus;
   rating: number; // 0-10
   global_comment: string;
   episodes: Record<string, EpisodeRecord>;
@@ -97,7 +101,9 @@ export interface SeasonRecord {
 export interface MovieRecord {
   type: 'movie';
   tmdb_id: number;
-  global_status: WatchStatus;
+  name?: string;
+  poster_path?: string;
+  global_status?: WatchStatus;
   rating: number;
   global_comment: string;
 }

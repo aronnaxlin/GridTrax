@@ -144,7 +144,7 @@ const EpisodeCell: React.FC<EpisodeCellProps> = ({
                         content: '""',
                         position: 'absolute',
                         inset: 0,
-                        borderRadius: '8px',
+                        borderRadius: '4px',
                         background: alpha('#fff', ripple ? 0.25 : 0),
                         transition: 'background 350ms ease',
                     },

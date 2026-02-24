@@ -1,23 +1,16 @@
-import { createTheme, type Theme } from '@mui/material/styles';
+import { createTheme, type PaletteMode, type Theme } from '@mui/material/styles';
+import { type BaseThemeConfig } from './themes';
 
 // Base Material You theme configuration
-export const createAppTheme = (primaryColor?: string): Theme => {
+export const createAppTheme = (config: BaseThemeConfig, mode: PaletteMode = 'dark'): Theme => {
     return createTheme({
         palette: {
-            mode: 'dark',
-            primary: {
-                main: primaryColor || '#D0BCFF',
-            },
-            secondary: {
-                main: '#CCC2DC',
-            },
-            background: {
-                default: '#141218',
-                paper: '#211F26',
-            },
-            surface: {
-                main: '#141218',
-            },
+            mode,
+            primary: config.primary,
+            secondary: config.secondary,
+            background: config.background,
+            surface: { main: config.background.default }, // Fallback standard surface
+            text: config.text,
         },
         typography: {
             fontFamily: '"Inter", "Noto Sans SC", "Roboto", sans-serif',
@@ -26,13 +19,13 @@ export const createAppTheme = (primaryColor?: string): Theme => {
             h6: { fontWeight: 600 },
         },
         shape: {
-            borderRadius: 16,
+            borderRadius: 6,
         },
         components: {
             MuiButton: {
                 styleOverrides: {
                     root: {
-                        borderRadius: 50,
+                        borderRadius: 8,
                         textTransform: 'none',
                         fontWeight: 600,
                     },
@@ -41,15 +34,16 @@ export const createAppTheme = (primaryColor?: string): Theme => {
             MuiCard: {
                 styleOverrides: {
                     root: {
-                        borderRadius: 20,
+                        borderRadius: 8,
                         backgroundImage: 'none',
+                        boxShadow: 'none',
                     },
                 },
             },
             MuiChip: {
                 styleOverrides: {
                     root: {
-                        borderRadius: 8,
+                        borderRadius: 4,
                     },
                 },
             },
@@ -57,7 +51,7 @@ export const createAppTheme = (primaryColor?: string): Theme => {
                 styleOverrides: {
                     root: {
                         '& .MuiOutlinedInput-root': {
-                            borderRadius: 28,
+                            borderRadius: 8,
                         },
                     },
                 },
@@ -83,4 +77,7 @@ declare module '@mui/material/styles' {
     }
 }
 
-export const defaultTheme = createAppTheme();
+// We don't export a single defaultTheme anymore since it's dependent on the store,
+// but we can export a dummy default if needed for tests.
+import { PREDEFINED_THEMES } from './themes';
+export const defaultTheme = createAppTheme(PREDEFINED_THEMES[0], 'dark');
