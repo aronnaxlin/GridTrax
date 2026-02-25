@@ -4,6 +4,7 @@ import { alpha, useTheme } from '@mui/material/styles';
 import React from 'react';
 import { Link } from 'react-router-dom';
 import SearchBar from './SearchBar';
+import SyncPanel from './SyncPanel';
 import ThemePicker from './ThemePicker';
 
 interface Props {
@@ -85,6 +86,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
 
                             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                                 <SearchBar />
+                                <SyncPanel />
                                 <ThemePicker />
                             </Box>
                         </Toolbar>

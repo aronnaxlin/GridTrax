@@ -1,0 +1,454 @@
+import CheckCircleIcon from '@mui/icons-material/CheckCircle';
+import CloudDownloadIcon from '@mui/icons-material/CloudDownload';
+import CloudUploadIcon from '@mui/icons-material/CloudUpload';
+import DownloadIcon from '@mui/icons-material/Download';
+import ErrorIcon from '@mui/icons-material/Error';
+import FolderOpenIcon from '@mui/icons-material/FolderOpen';
+import SettingsIcon from '@mui/icons-material/Settings';
+import SyncIcon from '@mui/icons-material/Sync';
+import UploadFileIcon from '@mui/icons-material/UploadFile';
+import {
+    Alert,
+    Box,
+    Button,
+    Chip,
+    CircularProgress,
+    Collapse,
+    Dialog,
+    DialogContent,
+    DialogTitle,
+    Divider,
+    IconButton,
+    InputAdornment,
+    Stack,
+    TextField,
+    Tooltip,
+    Typography,
+} from '@mui/material';
+import { alpha, keyframes } from '@mui/material/styles';
+import React, { useRef, useState } from 'react';
+import { mergeProgressData, webdavDownload, webdavUpload } from '../api/webdavService';
+import { useProgressStore } from '../store/useProgressStore';
+import type { WebDAVConfig } from '../store/useWebDAVStore';
+import { useWebDAVStore } from '../store/useWebDAVStore';
+import type { ProgressData } from '../types';
+
+// ── Animation ────────────────────────────────────────────────────────────────
+
+const spin = keyframes`
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+`;
+
+// ── Types ────────────────────────────────────────────────────────────────────
+
+type SyncStatus = 'idle' | 'loading' | 'success' | 'error';
+interface StatusResult { type: SyncStatus; message: string; }
+const idle: StatusResult = { type: 'idle', message: '' };
+
+// ── Sub-components ───────────────────────────────────────────────────────────
+
+const StatusAlert: React.FC<{ status: StatusResult }> = ({ status }) => (
+    <Collapse in={status.type !== 'idle'} unmountOnExit>
+        <Box sx={{ mt: 1.5 }}>
+            {status.type === 'loading' && (
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, py: 0.5 }}>
+                    <CircularProgress size={14} />
+                    <Typography variant="caption" color="text.secondary">{status.message}</Typography>
+                </Box>
+            )}
+            {status.type === 'success' && (
+                <Alert severity="success" icon={<CheckCircleIcon fontSize="inherit" />} sx={{ py: 0.5, borderRadius: 2 }}>
+                    {status.message}
+                </Alert>
+            )}
+            {status.type === 'error' && (
+                <Alert severity="error" icon={<ErrorIcon fontSize="inherit" />} sx={{ py: 0.5, borderRadius: 2 }}>
+                    {status.message}
+                </Alert>
+            )}
+        </Box>
+    </Collapse>
+);
+
+// ── Main Component ────────────────────────────────────────────────────────────
+
+const SyncPanel: React.FC = () => {
+    const [open, setOpen] = useState(false);
+    const [showPassword, setShowPassword] = useState(false);
+
+    const { config, setConfig } = useWebDAVStore();
+    const [formConfig, setFormConfig] = useState<WebDAVConfig>(config);
+
+    const progressData = useProgressStore((s) => s.data);
+
+    const [webdavStatus, setWebdavStatus] = useState<StatusResult>(idle);
+    const [jsonStatus, setJsonStatus] = useState<StatusResult>(idle);
+    const [syncing, setSyncing] = useState(false);
+
+    const fileInputRef = useRef<HTMLInputElement>(null);
+
+    const isConfigured = !!(config.url && config.username && config.password);
+    const isFormValid = !!(formConfig.url && formConfig.username && formConfig.password && formConfig.filePath);
+    const recordCount = Object.keys(progressData.records).length;
+
+    const openDialog = () => {
+        setFormConfig(config);
+        setWebdavStatus(idle);
+        setJsonStatus(idle);
+        setOpen(true);
+    };
+
+    // ── Smart sync button ─────────────────────────────────────────────────────
+    const handleSmartSync = async () => {
+        if (!isConfigured) {
+            openDialog();
+            return;
+        }
+        setSyncing(true);
+        try {
+            const remoteData = await webdavDownload(config);
+            let finalData: ProgressData;
+            if (!remoteData) {
+                finalData = { ...progressData, last_sync: Date.now() };
+            } else {
+                finalData = { ...mergeProgressData(progressData, remoteData), last_sync: Date.now() };
+            }
+            await webdavUpload(config, finalData);
+            useProgressStore.setState((s) => ({ ...s, data: finalData }));
+        } catch {
+            // Silently fail for quick sync; user can open settings for details
+        } finally {
+            setSyncing(false);
+        }
+    };
+
+    // ── WebDAV actions ────────────────────────────────────────────────────────
+    const handleSaveConfig = () => {
+        setConfig(formConfig);
+        setWebdavStatus({ type: 'success', message: '配置已保存' });
+    };
+
+    const handleWebDAVSync = async () => {
+        setConfig(formConfig);
+        setWebdavStatus({ type: 'loading', message: '正在双向同步…' });
+        try {
+            const remoteData = await webdavDownload(formConfig);
+            let finalData: ProgressData;
+            if (!remoteData) {
+                finalData = { ...progressData, last_sync: Date.now() };
+            } else {
+                finalData = { ...mergeProgressData(progressData, remoteData), last_sync: Date.now() };
+            }
+            await webdavUpload(formConfig, finalData);
+            useProgressStore.setState((s) => ({ ...s, data: finalData }));
+            setWebdavStatus({ type: 'success', message: '双向同步完成！' });
+        } catch (e) {
+            setWebdavStatus({ type: 'error', message: (e as Error).message });
+        }
+    };
+
+    const handleWebDAVDownload = async () => {
+        setConfig(formConfig);
+        setWebdavStatus({ type: 'loading', message: '正在下载…' });
+        try {
+            const remoteData = await webdavDownload(formConfig);
+            if (!remoteData) {
+                setWebdavStatus({ type: 'error', message: '远程文件不存在，请先上传一次。' });
+                return;
+            }
+            useProgressStore.setState((s) => ({ ...s, data: remoteData }));
+            setWebdavStatus({ type: 'success', message: '已用远程数据覆盖本地。' });
+        } catch (e) {
+            setWebdavStatus({ type: 'error', message: (e as Error).message });
+        }
+    };
+
+    const handleWebDAVUpload = async () => {
+        setConfig(formConfig);
+        setWebdavStatus({ type: 'loading', message: '正在上传…' });
+        try {
+            const uploadData: ProgressData = { ...progressData, last_sync: Date.now() };
+            await webdavUpload(formConfig, uploadData);
+            setWebdavStatus({ type: 'success', message: '上传成功！数据已保存至 WebDAV。' });
+        } catch (e) {
+            setWebdavStatus({ type: 'error', message: (e as Error).message });
+        }
+    };
+
+    // ── JSON actions ──────────────────────────────────────────────────────────
+    const handleJsonExport = () => {
+        try {
+            const blob = new Blob(
+                [JSON.stringify({ ...progressData, last_sync: Date.now() }, null, 2)],
+                { type: 'application/json' }
+            );
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = `gridtrax_backup_${new Date().toISOString().slice(0, 10)}.json`;
+            a.click();
+            URL.revokeObjectURL(a.href);
+            setJsonStatus({ type: 'success', message: '已导出 JSON 备份文件。' });
+        } catch (e) {
+            setJsonStatus({ type: 'error', message: (e as Error).message });
+        }
+    };
+
+    const handleJsonImportFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = (ev) => {
+            try {
+                const parsed = JSON.parse(ev.target?.result as string) as ProgressData;
+                if (!parsed?.records) throw new Error('文件格式不正确，缺少 records 字段。');
+                useProgressStore.setState((s) => ({ ...s, data: parsed }));
+                setJsonStatus({ type: 'success', message: `已成功导入 ${Object.keys(parsed.records).length} 条记录。` });
+            } catch (err) {
+                setJsonStatus({ type: 'error', message: (err as Error).message });
+            }
+        };
+        reader.readAsText(file);
+        e.target.value = '';
+    };
+
+    const isWebdavLoading = webdavStatus.type === 'loading';
+
+    return (
+        <>
+            {/* ── Navbar: Smart Sync Button ── */}
+            <Tooltip title={isConfigured ? '双向同步' : '配置云同步'}>
+                <IconButton
+                    onClick={handleSmartSync}
+                    size="small"
+                    sx={{
+                        color: 'text.secondary',
+                        '&:hover': { color: 'primary.main', backgroundColor: (t) => alpha(t.palette.primary.main, 0.08) },
+                    }}
+                >
+                    <SyncIcon
+                        sx={syncing ? { animation: `${spin} 1s linear infinite` } : undefined}
+                    />
+                </IconButton>
+            </Tooltip>
+
+            {/* ── Navbar: Settings Button ── */}
+            <Tooltip title="同步设置">
+                <IconButton
+                    onClick={openDialog}
+                    size="small"
+                    sx={{
+                        color: 'text.secondary',
+                        '&:hover': { color: 'primary.main', backgroundColor: (t) => alpha(t.palette.primary.main, 0.08) },
+                    }}
+                >
+                    <SettingsIcon />
+                </IconButton>
+            </Tooltip>
+
+            {/* ── Dialog ── */}
+            <Dialog
+                open={open}
+                onClose={() => setOpen(false)}
+                maxWidth="sm"
+                fullWidth
+                PaperProps={{ sx: { borderRadius: 3, backgroundImage: 'none' } }}
+            >
+                <DialogTitle sx={{ pb: 1 }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                        <SyncIcon sx={{ color: 'primary.main' }} />
+                        <Typography variant="h6" fontWeight={700}>数据同步</Typography>
+                        <Chip label={`${recordCount} 条记录`} size="small" sx={{ ml: 'auto', fontWeight: 600 }} />
+                    </Box>
+                </DialogTitle>
+
+                <DialogContent sx={{ pt: 0 }}>
+                    <Stack spacing={3}>
+
+                        {/* ── JSON Import/Export ── */}
+                        <Box>
+                            <Typography variant="overline" color="text.secondary" sx={{ fontWeight: 700, letterSpacing: 1 }}>
+                                JSON 导入 / 导出
+                            </Typography>
+                            <Stack direction="row" spacing={1.5} sx={{ mt: 1 }}>
+                                <Button
+                                    variant="outlined"
+                                    startIcon={<DownloadIcon />}
+                                    onClick={handleJsonExport}
+                                    fullWidth
+                                    sx={{ borderRadius: 2, whiteSpace: 'nowrap' }}
+                                >
+                                    导出备份
+                                </Button>
+                                <Button
+                                    variant="outlined"
+                                    startIcon={<UploadFileIcon />}
+                                    onClick={() => fileInputRef.current?.click()}
+                                    fullWidth
+                                    sx={{ borderRadius: 2, whiteSpace: 'nowrap' }}
+                                >
+                                    导入备份
+                                </Button>
+                            </Stack>
+                            <input
+                                ref={fileInputRef}
+                                type="file"
+                                accept=".json,application/json"
+                                style={{ display: 'none' }}
+                                onChange={handleJsonImportFile}
+                            />
+                            <StatusAlert status={jsonStatus} />
+                        </Box>
+
+                        <Divider />
+
+                        {/* ── WebDAV Config ── */}
+                        <Box>
+                            <Typography variant="overline" color="text.secondary" sx={{ fontWeight: 700, letterSpacing: 1 }}>
+                                WebDAV 云同步
+                            </Typography>
+                            <Typography variant="caption" color="text.disabled" sx={{ display: 'block', mb: 2 }}>
+                                兼容 Nextcloud、坚果云、Alist/Openlist 等服务（需开启 CORS）
+                            </Typography>
+
+                            <Stack spacing={2}>
+                                <TextField
+                                    label="WebDAV 地址"
+                                    placeholder="https://dav.example.com/dav/username"
+                                    value={formConfig.url}
+                                    onChange={(e) => setFormConfig((c) => ({ ...c, url: e.target.value }))}
+                                    size="small"
+                                    fullWidth
+                                    slotProps={{ inputLabel: { shrink: true } }}
+                                />
+                                <Stack direction="row" spacing={1.5}>
+                                    <TextField
+                                        label="用户名"
+                                        value={formConfig.username}
+                                        onChange={(e) => setFormConfig((c) => ({ ...c, username: e.target.value }))}
+                                        size="small"
+                                        fullWidth
+                                        slotProps={{ inputLabel: { shrink: true } }}
+                                    />
+                                    <TextField
+                                        label="密码 / App Token"
+                                        type={showPassword ? 'text' : 'password'}
+                                        value={formConfig.password}
+                                        onChange={(e) => setFormConfig((c) => ({ ...c, password: e.target.value }))}
+                                        size="small"
+                                        fullWidth
+                                        slotProps={{
+                                            inputLabel: { shrink: true },
+                                            input: {
+                                                endAdornment: (
+                                                    <InputAdornment position="end">
+                                                        <Button
+                                                            size="small"
+                                                            onClick={() => setShowPassword((v) => !v)}
+                                                            sx={{ minWidth: 0, px: 1, fontSize: '0.7rem', color: 'text.secondary' }}
+                                                        >
+                                                            {showPassword ? '隐藏' : '显示'}
+                                                        </Button>
+                                                    </InputAdornment>
+                                                ),
+                                            },
+                                        }}
+                                    />
+                                </Stack>
+                                <TextField
+                                    label="远程文件路径"
+                                    placeholder="/gridtrax/data.json"
+                                    value={formConfig.filePath}
+                                    onChange={(e) => setFormConfig((c) => ({ ...c, filePath: e.target.value }))}
+                                    size="small"
+                                    fullWidth
+                                    slotProps={{
+                                        inputLabel: { shrink: true },
+                                        input: {
+                                            startAdornment: (
+                                                <InputAdornment position="start">
+                                                    <FolderOpenIcon fontSize="small" sx={{ color: 'text.disabled' }} />
+                                                </InputAdornment>
+                                            ),
+                                        },
+                                    }}
+                                />
+
+                                <Box sx={{ display: 'flex', justifyContent: 'flex-end' }}>
+                                    <Button
+                                        variant="contained"
+                                        onClick={handleSaveConfig}
+                                        disabled={!isFormValid}
+                                        sx={{ borderRadius: 2 }}
+                                    >
+                                        保存配置
+                                    </Button>
+                                </Box>
+                            </Stack>
+                        </Box>
+
+                        {/* ── WebDAV Action Buttons ── */}
+                        <Box sx={{ display: 'flex', gap: 1.5, alignItems: 'stretch' }}>
+                            {/* Main: bidirectional sync */}
+                            <Button
+                                variant="contained"
+                                color="primary"
+                                onClick={handleWebDAVSync}
+                                disabled={!isFormValid || isWebdavLoading}
+                                startIcon={
+                                    isWebdavLoading
+                                        ? <CircularProgress size={16} color="inherit" />
+                                        : <SyncIcon sx={isWebdavLoading ? { animation: `${spin} 1s linear infinite` } : undefined} />
+                                }
+                                sx={{ borderRadius: 2, fontWeight: 700, flex: 1, whiteSpace: 'nowrap' }}
+                            >
+                                双向同步
+                            </Button>
+
+                            {/* Icon-only: download */}
+                            <Tooltip title="仅下载（远程覆盖本地）" arrow>
+                                <span>
+                                    <IconButton
+                                        onClick={handleWebDAVDownload}
+                                        disabled={!isFormValid || isWebdavLoading}
+                                        sx={{
+                                            border: 1,
+                                            borderColor: 'divider',
+                                            borderRadius: 2,
+                                            '&:hover': { borderColor: 'primary.main', color: 'primary.main' },
+                                        }}
+                                    >
+                                        <CloudDownloadIcon />
+                                    </IconButton>
+                                </span>
+                            </Tooltip>
+
+                            {/* Icon-only: upload */}
+                            <Tooltip title="仅上传（本地覆盖远程）" arrow>
+                                <span>
+                                    <IconButton
+                                        onClick={handleWebDAVUpload}
+                                        disabled={!isFormValid || isWebdavLoading}
+                                        sx={{
+                                            border: 1,
+                                            borderColor: 'divider',
+                                            borderRadius: 2,
+                                            '&:hover': { borderColor: 'primary.main', color: 'primary.main' },
+                                        }}
+                                    >
+                                        <CloudUploadIcon />
+                                    </IconButton>
+                                </span>
+                            </Tooltip>
+                        </Box>
+
+                        <StatusAlert status={webdavStatus} />
+
+                    </Stack>
+                </DialogContent>
+            </Dialog>
+        </>
+    );
+};
+
+export default SyncPanel;
