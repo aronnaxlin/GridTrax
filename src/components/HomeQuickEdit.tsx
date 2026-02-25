@@ -1,3 +1,4 @@
+import DeleteIcon from '@mui/icons-material/Delete';
 import EditIcon from '@mui/icons-material/Edit';
 import {
     Box,
@@ -56,6 +57,7 @@ const HomeQuickEdit: React.FC<HomeQuickEditProps> = ({
         setSeasonRating,
         setMovieStatus,
         setMovieRating,
+        removeRecord,
     } = useProgressStore();
 
     const record = type === 'tv_season' && seasonNumber !== undefined
@@ -90,6 +92,14 @@ const HomeQuickEdit: React.FC<HomeQuickEditProps> = ({
 
     const titleText = meta?.show_name || meta?.name || (type === 'tv_season' ? `剧集 #${tmdbId}` : `电影 #${tmdbId}`);
     const tagText = type === 'tv_season' ? (meta?.name || `第 ${seasonNumber} 季`) : null;
+    const currentRecordKey = type === 'tv_season' ? `tmdb_tv_${tmdbId}_s${seasonNumber}` : `tmdb_movie_${tmdbId}`;
+
+    const handleDelete = () => {
+        if (window.confirm(`确定要从 GridTrax 中删除「${titleText}」的所有记录吗？此操作无法撤销。`)) {
+            removeRecord(currentRecordKey);
+            setOpen(false);
+        }
+    };
 
     return (
         <>
@@ -136,6 +146,18 @@ const HomeQuickEdit: React.FC<HomeQuickEditProps> = ({
                             </Typography>
                         )}
                     </Box>
+                    <IconButton
+                        size="small"
+                        onClick={handleDelete}
+                        sx={{
+                            color: 'error.main',
+                            ml: 'auto',
+                            '&:hover': { backgroundColor: alpha(theme.palette.error.main, 0.1) },
+                        }}
+                        title="删除该记录"
+                    >
+                        <DeleteIcon fontSize="small" />
+                    </IconButton>
                 </DialogTitle>
 
                 <DialogContent>

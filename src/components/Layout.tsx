@@ -3,6 +3,7 @@ import { AppBar, Box, Container, Toolbar, Typography, useScrollTrigger } from '@
 import { alpha, useTheme } from '@mui/material/styles';
 import React from 'react';
 import { Link } from 'react-router-dom';
+import BangumiSyncPanel from './BangumiSyncPanel';
 import SearchBar from './SearchBar';
 import SyncPanel from './SyncPanel';
 import ThemePicker from './ThemePicker';
@@ -21,7 +22,7 @@ function ElevationScroll(props: Props) {
     const theme = useTheme();
 
     return React.cloneElement(children, {
-        elevation: trigger ? 4 : 0,
+        elevation: 0,
         sx: {
             backgroundColor: trigger
                 ? alpha(theme.palette.background.default, 0.85)
@@ -87,6 +88,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
                             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                                 <SearchBar />
                                 <SyncPanel />
+                                <BangumiSyncPanel />
                                 <ThemePicker />
                             </Box>
                         </Toolbar>

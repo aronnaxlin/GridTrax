@@ -1,5 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import { GRIDTRAX_TO_BANGUMI } from '../api/bangumiService';
+import { autoPushToBangumi } from '../components/BangumiSyncPanel';
 import type {
     EpisodeRecord,
     MovieRecord,
@@ -30,6 +32,7 @@ interface ProgressState {
     getEpisodeRecord: (tvId: number, seasonNumber: number, episodeNumber: number) => EpisodeRecord;
     // Settings
     setTmdbApiKey: (key: string) => void;
+    removeRecord: (recordKey: string) => void;
 }
 
 const seasonKey = (tvId: number, seasonNumber: number) => `tmdb_tv_${tvId}_s${seasonNumber}`;
@@ -205,6 +208,13 @@ export const useProgressStore = create<ProgressState>()(
                         },
                     },
                 }));
+                // Auto-push to Bangumi (best-effort, async)
+                const rec = get().data.records[key] as SeasonRecord | undefined;
+                autoPushToBangumi(
+                    rec?.bangumi_subject_id,
+                    GRIDTRAX_TO_BANGUMI[status],
+                    rec?.rating ?? 0,
+                );
             },
 
             setSeasonRating: (tvId, seasonNumber, rating) => {
@@ -219,6 +229,15 @@ export const useProgressStore = create<ProgressState>()(
                         },
                     },
                 }));
+                // Auto-push to Bangumi (best-effort)
+                const rec = get().data.records[key] as SeasonRecord | undefined;
+                if (rec?.global_status) {
+                    autoPushToBangumi(
+                        rec.bangumi_subject_id,
+                        GRIDTRAX_TO_BANGUMI[rec.global_status],
+                        rating,
+                    );
+                }
             },
 
             setSeasonComment: (tvId, seasonNumber, comment) => {
@@ -322,6 +341,20 @@ export const useProgressStore = create<ProgressState>()(
                 const key = seasonKey(tvId, seasonNumber);
                 const record = get().data.records[key] as SeasonRecord | undefined;
                 return record?.episodes[String(episodeNumber)] ?? defaultEpisodeRecord();
+            },
+
+            removeRecord: (recordKey: string) => {
+                set((state) => {
+                    const newRecords = { ...state.data.records };
+                    delete newRecords[recordKey];
+                    return {
+                        data: {
+                            ...state.data,
+                            last_sync: Date.now(),
+                            records: newRecords,
+                        },
+                    };
+                });
             },
         }),
         {

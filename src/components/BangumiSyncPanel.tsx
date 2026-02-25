@@ -1,0 +1,590 @@
+import AccountCircleIcon from '@mui/icons-material/AccountCircle';
+import CheckCircleIcon from '@mui/icons-material/CheckCircle';
+import ErrorIcon from '@mui/icons-material/Error';
+import ExitToAppIcon from '@mui/icons-material/ExitToApp';
+import FileDownloadIcon from '@mui/icons-material/FileDownload';
+import SaveIcon from '@mui/icons-material/Save';
+import SyncIcon from '@mui/icons-material/Sync';
+import {
+    Alert,
+    Box,
+    Button,
+    Chip,
+    CircularProgress,
+    Collapse,
+    Dialog,
+    DialogActions,
+    DialogContent,
+    DialogTitle,
+    Divider,
+    IconButton,
+    InputAdornment,
+    Stack,
+    TextField,
+    Tooltip,
+    Typography,
+} from '@mui/material';
+import { alpha, useTheme } from '@mui/material/styles';
+import React, { useState } from 'react';
+import {
+    BANGUMI_TO_GRIDTRAX,
+    GRIDTRAX_TO_BANGUMI,
+    bangumiGetCollections,
+    bangumiGetMe,
+    bangumiPatchCollection,
+    type BangumiCollectionType,
+} from '../api/bangumiService';
+import { searchTV } from '../api/tmdb';
+import { useBangumiStore } from '../store/useBangumiStore';
+import { useProgressStore } from '../store/useProgressStore';
+import type { SeasonRecord } from '../types';
+
+// ── Bangumi SVG Icon (themed to primary color) ────────────────────────────────
+
+const BangumiIcon: React.FC<{ color: string; size?: number }> = ({ color, size = 20 }) => (
+    <svg viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg" width={size} height={size} fill={color}>
+        <path d="M228.115268 615.399298a12.300795 12.300795 0 0 0 11.35458 7.569719 12.471113 12.471113 0 0 0 4.749999-0.965139l147.609537-61.882459a12.300795 12.300795 0 0 0 0.26494-22.557765l-147.609537-66.235049a12.300795 12.300795 0 1 0-10.067727 22.444219l121.740019 54.634453-121.456155 50.906366a12.300795 12.300795 0 0 0-6.585656 16.085655zM399.020617 627.965033H239.469848a12.300795 12.300795 0 0 0 0 24.601589h159.550769a12.300795 12.300795 0 0 0 0-24.601589zM399.020617 667.460046H239.469848a12.300795 12.300795 0 0 0 0 24.601589h159.550769a12.300795 12.300795 0 0 0 0-24.601589zM872.941851 476.892349l-133.283841 58.381464a12.300795 12.300795 0 0 0-0.397411 22.349598l133.302766 64.058754a12.073703 12.073703 0 0 0 5.317729 1.23008 12.300795 12.300795 0 0 0 5.336652-23.390435l-109.15536-52.42031L882.896033 499.469038a12.300795 12.300795 0 1 0-9.954182-22.576689zM877.881094 627.965033h-148.101569a12.300795 12.300795 0 0 0 0 24.601589h148.101569a12.300795 12.300795 0 0 0 0-24.601589zM877.881094 667.460046h-148.101569a12.300795 12.300795 0 0 0 0 24.601589h148.101569a12.300795 12.300795 0 0 0 0-24.601589zM644.866193 537.128395h-162.919295a12.28187 12.28187 0 0 0-10.711153 18.318722l81.374488 145.130453a12.300795 12.300795 0 0 0 21.460155 0l81.374489-145.130453a12.300795 12.300795 0 0 0-10.730078-18.318722z m-81.374488 132.299778l-60.444213-107.698189h120.888426z" />
+        <path d="M891.411968 334.960102H648.405037c-6.812748-15.13944-19.813742-28.386449-36.864535-38.018917L803.092262 19.283861a12.300795 12.300795 0 0 0-20.249001-13.966133L588.566402 286.873457a147.723082 147.723082 0 0 0-45.418319-7.001991 151.507942 151.507942 0 0 0-31.887445 3.368526L239.980804 4.712151A12.300795 12.300795 0 0 0 222.437978 21.87649l262.726051 269.803739c-22.14143 9.821711-39.116527 25.112546-47.310749 43.242025H132.547555A91.763929 91.763929 0 0 0 40.764702 426.705107v414.44216A91.763929 91.763929 0 0 0 132.547555 932.967969h268.024855l-19.908363 46.989036c-12.641432 29.881469 22.614538 57.094612 48.294812 37.299794L538.473781 932.967969h352.938187a91.763929 91.763929 0 0 0 91.782853-91.782853v-414.442161a91.763929 91.763929 0 0 0-91.782853-91.782853z m34.839635 463.815658a60.709153 60.709153 0 0 1-60.709153 60.709153H585.670984L487.870204 932.967969l-77.002975 57.851583 24.412346-57.851583 31.016927-73.483056H198.082405A60.728077 60.728077 0 0 1 137.27863 798.737912V440.330602a60.728077 60.728077 0 0 1 60.728077-60.728077h667.460046a60.709153 60.709153 0 0 1 60.709153 60.728077z" />
+    </svg>
+);
+
+// ── Log item ─────────────────────────────────────────────────────────────────
+
+interface LogEntry {
+    name: string;
+    success: boolean;
+    detail: string;
+}
+
+// ── Conflict dialog ───────────────────────────────────────────────────────────
+
+interface ConflictItem { key: string; localStatus: string; remoteStatus: string }
+
+const ConflictDialog: React.FC<{
+    conflicts: ConflictItem[];
+    open: boolean;
+    onResolve: (pref: 'local' | 'remote') => void;
+}> = ({ conflicts, open, onResolve }) => (
+    <Dialog open={open} maxWidth="sm" fullWidth PaperProps={{ sx: { borderRadius: 3 } }}>
+        <DialogTitle fontWeight={700}>同步冲突</DialogTitle>
+        <DialogContent>
+            <Typography variant="body2" color="text.secondary" gutterBottom>
+                以下 {conflicts.length} 个条目在 GridTrax 和 Bangumi 之间状态不同，请选择以哪一方为准：
+            </Typography>
+            <Box sx={{ mt: 1, maxHeight: 220, overflow: 'auto' }}>
+                {conflicts.slice(0, 15).map((c) => (
+                    <Box key={c.key} sx={{ display: 'flex', justifyContent: 'space-between', py: 0.5, borderBottom: '1px solid', borderColor: 'divider' }}>
+                        <Typography variant="caption" noWrap sx={{ maxWidth: '55%' }}>{c.key}</Typography>
+                        <Typography variant="caption" color="text.secondary">
+                            本地: {c.localStatus} → Bangumi: {c.remoteStatus}
+                        </Typography>
+                    </Box>
+                ))}
+            </Box>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+            <Button onClick={() => onResolve('local')} variant="outlined" sx={{ borderRadius: 2 }}>保留 GridTrax 数据</Button>
+            <Button onClick={() => onResolve('remote')} variant="contained" sx={{ borderRadius: 2 }}>以 Bangumi 为准</Button>
+        </DialogActions>
+    </Dialog>
+);
+
+// ── Main BangumiSyncPanel ─────────────────────────────────────────────────────
+
+const BangumiSyncPanel: React.FC = () => {
+    const theme = useTheme();
+    const primary = theme.palette.primary.main;
+    const { token, username, nickname, setToken, setUserInfo } = useBangumiStore();
+
+    const [open, setOpen] = useState(false);
+    const [formToken, setFormToken] = useState(token);
+    const [showToken, setShowToken] = useState(false);
+
+    type Status = 'idle' | 'loading' | 'success' | 'error';
+    const [authStatus, setAuthStatus] = useState<{ type: Status; msg: string }>({ type: 'idle', msg: '' });
+    const [syncRunning, setSyncRunning] = useState(false);
+    const [syncMessage, setSyncMessage] = useState('');
+
+    // Progress
+    const [importProgress, setImportProgress] = useState<{ current: number; total: number; name: string } | null>(null);
+
+    // Detailed log
+    const [log, setLog] = useState<LogEntry[]>([]);
+    const [summary, setSummary] = useState<{ matched: number; skipped: number; total: number } | null>(null);
+
+    // Conflict resolution
+    const [conflicts, setConflicts] = useState<ConflictItem[]>([]);
+    const [conflictOpen, setConflictOpen] = useState(false);
+    const [resolver, setResolver] = useState<null | ((pref: 'local' | 'remote') => void)>(null);
+
+    const isConfigured = !!(token && username);
+
+    const addLog = (entry: LogEntry) => setLog((prev) => [entry, ...prev]);
+
+    // ── Verify token ──────────────────────────────────────────────────────────
+    const handleVerify = async () => {
+        if (!formToken.trim()) return;
+        setAuthStatus({ type: 'loading', msg: '正在验证…' });
+        try {
+            const me = await bangumiGetMe(formToken.trim());
+            setToken(formToken.trim());
+            setUserInfo({ username: me.username, userId: me.id, nickname: me.nickname });
+            setAuthStatus({ type: 'success', msg: `已登录为 ${me.nickname} (@${me.username})` });
+        } catch (e) {
+            setAuthStatus({ type: 'error', msg: (e as Error).message });
+        }
+    };
+
+    // ── Import from Bangumi ───────────────────────────────────────────────────
+    const handleImport = async () => {
+        if (!isConfigured) return;
+        setSyncRunning(true);
+        setSyncMessage('正在拉取 Bangumi 收藏列表…');
+        setLog([]);
+        setSummary(null);
+        setImportProgress(null);
+        try {
+            const collections = await bangumiGetCollections(token, username, 2);
+            const total = collections.length;
+            const store = useProgressStore.getState();
+            let matched = 0, skipped = 0;
+
+            setSyncMessage(`已拉取 ${total} 条，开始逐条匹配 TMDB…`);
+
+            for (let i = 0; i < collections.length; i++) {
+                const col = collections[i];
+                const nameCn = col.subject?.name_cn || '';
+                const nameOrig = col.subject?.name || '';
+                const displayName = nameCn || nameOrig || `Subject #${col.subject_id}`;
+
+                setImportProgress({ current: i + 1, total, name: displayName });
+
+                // Check cache
+                const cachedKey = Object.keys(store.data.records).find(
+                    (k) => (store.data.records[k] as SeasonRecord).bangumi_subject_id === col.subject_id
+                );
+                if (cachedKey) {
+                    const rec = store.data.records[cachedKey] as SeasonRecord;
+                    store.setSeasonStatus(rec.tmdb_id, rec.season_number, BANGUMI_TO_GRIDTRAX[col.type]);
+                    if (col.rate > 0) store.setSeasonRating(rec.tmdb_id, rec.season_number, col.rate);
+                    addLog({ name: displayName, success: true, detail: `已缓存 → ${BANGUMI_TO_GRIDTRAX[col.type]}` });
+                    matched++;
+                    continue;
+                }
+
+                // Search TMDB
+                let tmdbMatch: { id: number; name: string; poster_path?: string } | null = null;
+                for (const q of [nameCn, nameOrig].filter(Boolean)) {
+                    tmdbMatch = await searchTV(q);
+                    if (tmdbMatch) break;
+                }
+
+                if (!tmdbMatch) {
+                    addLog({ name: displayName, success: false, detail: '未在 TMDB 找到匹配条目' });
+                    skipped++;
+                    await new Promise((r) => setTimeout(r, 150));
+                    continue;
+                }
+
+                const tmdbId = tmdbMatch.id;
+                const gridtraxStatus = BANGUMI_TO_GRIDTRAX[col.type];
+                store.setSeasonStatus(tmdbId, 1, gridtraxStatus, {
+                    show_name: tmdbMatch.name,
+                    name: '第 1 季',
+                    poster_path: tmdbMatch.poster_path,
+                });
+                if (col.rate > 0) store.setSeasonRating(tmdbId, 1, col.rate);
+
+                // Cache bangumi_subject_id
+                const recKey = `tmdb_tv_${tmdbId}_s1`;
+                useProgressStore.setState((s) => ({
+                    data: {
+                        ...s.data,
+                        records: {
+                            ...s.data.records,
+                            [recKey]: { ...s.data.records[recKey], bangumi_subject_id: col.subject_id } as SeasonRecord,
+                        },
+                    },
+                }));
+
+                addLog({ name: displayName, success: true, detail: `→ ${tmdbMatch.name} [TMDB ${tmdbId}] · ${gridtraxStatus}` });
+                matched++;
+                await new Promise((r) => setTimeout(r, 250));
+            }
+
+            setImportProgress(null);
+            setSummary({ matched, skipped, total });
+            setSyncMessage('');
+        } catch (e) {
+            setSyncMessage('');
+            setImportProgress(null);
+        } finally {
+            setSyncRunning(false);
+        }
+    };
+
+    // ── Incremental sync ──────────────────────────────────────────────────────
+    const handleIncrementalSync = async () => {
+        if (!isConfigured) return;
+        setSyncRunning(true);
+        setSyncMessage('正在拉取 Bangumi 收藏…');
+        setLog([]);
+        setSummary(null);
+        setImportProgress(null);
+        try {
+            const collections = await bangumiGetCollections(token, username, 2);
+            const bgmMap = new Map(collections.map((c) => [c.subject_id, c]));
+            const store = useProgressStore.getState();
+            const detectedConflicts: ConflictItem[] = [];
+
+            for (const [key, rec] of Object.entries(store.data.records)) {
+                if (rec.type !== 'tv_season') continue;
+                const sr = rec as SeasonRecord;
+                if (!sr.bangumi_subject_id) continue;
+                const bgm = bgmMap.get(sr.bangumi_subject_id);
+                if (!bgm) continue;
+                const bgmStatus = BANGUMI_TO_GRIDTRAX[bgm.type];
+                if (sr.global_status && bgmStatus && sr.global_status !== bgmStatus) {
+                    detectedConflicts.push({ key: sr.show_name || key, localStatus: sr.global_status, remoteStatus: bgmStatus });
+                }
+            }
+
+            if (detectedConflicts.length > 0) {
+                setConflicts(detectedConflicts);
+                setSyncMessage('');
+                const pref = await new Promise<'local' | 'remote'>((resolve) => {
+                    setResolver(() => resolve);
+                    setConflictOpen(true);
+                });
+                setConflictOpen(false);
+                setResolver(null);
+
+                let synced = 0;
+                for (const [_key, rec] of Object.entries(store.data.records)) {
+                    if (rec.type !== 'tv_season') continue;
+                    const sr = rec as SeasonRecord;
+                    if (!sr.bangumi_subject_id) continue;
+                    const bgm = bgmMap.get(sr.bangumi_subject_id);
+                    if (!bgm) continue;
+                    if (pref === 'remote') {
+                        store.setSeasonStatus(sr.tmdb_id, sr.season_number, BANGUMI_TO_GRIDTRAX[bgm.type]);
+                        if (bgm.rate > 0) store.setSeasonRating(sr.tmdb_id, sr.season_number, bgm.rate);
+                        addLog({ name: sr.show_name || `TV ${sr.tmdb_id}`, success: true, detail: `Bangumi→ ${BANGUMI_TO_GRIDTRAX[bgm.type]}` });
+                    } else {
+                        if (sr.global_status) {
+                            await bangumiPatchCollection(token, sr.bangumi_subject_id, { type: GRIDTRAX_TO_BANGUMI[sr.global_status], rate: sr.rating });
+                            addLog({ name: sr.show_name || `TV ${sr.tmdb_id}`, success: true, detail: `GridTrax→ Bangumi · ${sr.global_status}` });
+                        }
+                    }
+                    synced++;
+                }
+                setSummary({ matched: synced, skipped: 0, total: synced });
+            } else {
+                setSyncMessage('无冲突，推送本地进度到 Bangumi…');
+                let synced = 0;
+                for (const rec of Object.values(store.data.records)) {
+                    if (rec.type !== 'tv_season') continue;
+                    const sr = rec as SeasonRecord;
+                    if (!sr.bangumi_subject_id || !sr.global_status) continue;
+                    await bangumiPatchCollection(token, sr.bangumi_subject_id, { type: GRIDTRAX_TO_BANGUMI[sr.global_status], rate: sr.rating });
+                    addLog({ name: sr.show_name || `TV ${sr.tmdb_id}`, success: true, detail: `推送 · ${sr.global_status}` });
+                    synced++;
+                }
+                setSummary({ matched: synced, skipped: 0, total: synced });
+                setSyncMessage('');
+            }
+        } catch (e) {
+            setSyncMessage('');
+        } finally {
+            setSyncRunning(false);
+        }
+    };
+
+    return (
+        <>
+            {/* Top-bar icon button */}
+            <Tooltip title={isConfigured ? `Bangumi · ${nickname || username}` : 'Bangumi 同步'} placement="bottom" arrow>
+                <IconButton
+                    onClick={() => setOpen(true)}
+                    sx={{
+                        width: 40,
+                        height: 40,
+                        borderRadius: 2,
+                        color: isConfigured ? primary : 'text.secondary',
+                        '&:hover': {
+                            backgroundColor: alpha(primary, 0.08),
+                            color: primary,
+                        },
+                    }}
+                >
+                    <BangumiIcon color="currentColor" size={24} />
+                </IconButton>
+            </Tooltip>
+
+            {/* Dialog */}
+            <Dialog
+                open={open}
+                onClose={() => !syncRunning && setOpen(false)}
+                maxWidth="sm"
+                fullWidth
+                PaperProps={{ sx: { borderRadius: 3, backgroundImage: 'none' } }}
+            >
+                <DialogTitle sx={{ pb: 0.5 }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+                        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 36, height: 36, borderRadius: 1.5, backgroundColor: alpha(primary, 0.12) }}>
+                            <BangumiIcon color={primary} size={22} />
+                        </Box>
+                        <Box>
+                            <Typography variant="h6" fontWeight={800} sx={{ lineHeight: 1.2 }}>Bangumi 同步</Typography>
+                            {isConfigured && (
+                                <Typography variant="caption" color="text.secondary">{nickname} · @{username}</Typography>
+                            )}
+                        </Box>
+                        {isConfigured && (
+                            <Box sx={{ ml: 'auto', display: 'flex', alignItems: 'center', gap: 1 }}>
+                                <Chip
+                                    icon={<AccountCircleIcon sx={{ fontSize: '14px !important' }} />}
+                                    label="已连接"
+                                    size="small"
+                                    color="success"
+                                    variant="outlined"
+                                    sx={{ fontSize: '0.7rem' }}
+                                />
+                                <Tooltip title="断开连接并清除 Token" arrow>
+                                    <IconButton
+                                        size="small"
+                                        color="error"
+                                        onClick={() => {
+                                            if (window.confirm('确定要断开 Bangumi 连接并清除本地 Token 吗？')) {
+                                                setToken('');
+                                                setUserInfo({ username: '', userId: 0, nickname: '' });
+                                                setFormToken('');
+                                                setAuthStatus({ type: 'idle', msg: '' });
+                                                setOpen(false);
+                                            }
+                                        }}
+                                        sx={{
+                                            border: 1,
+                                            borderColor: alpha(theme.palette.error.main, 0.3),
+                                            '&:hover': { backgroundColor: alpha(theme.palette.error.main, 0.1) },
+                                        }}
+                                    >
+                                        <ExitToAppIcon fontSize="small" />
+                                    </IconButton>
+                                </Tooltip>
+                            </Box>
+                        )}
+                    </Box>
+                </DialogTitle>
+
+                <DialogContent>
+                    <Stack spacing={2} sx={{ mt: 1 }}>
+                        {/* ── Token input ── */}
+                        <Box>
+                            <Typography variant="overline" color="text.secondary" sx={{ fontWeight: 700, letterSpacing: 1, fontSize: '0.65rem' }}>
+                                Access Token
+                            </Typography>
+                            <Stack direction="row" spacing={1} alignItems="center" sx={{ mt: 0.5 }}>
+                                <TextField
+                                    placeholder="在 next.bgm.tv/demo/access-token 获取"
+                                    value={formToken}
+                                    onChange={(e) => setFormToken(e.target.value)}
+                                    size="small"
+                                    type={showToken ? 'text' : 'password'}
+                                    fullWidth
+                                    slotProps={{
+                                        inputLabel: { shrink: true },
+                                        input: {
+                                            endAdornment: (
+                                                <InputAdornment position="end">
+                                                    <Button size="small" onClick={() => setShowToken(v => !v)}
+                                                        sx={{ minWidth: 0, px: 1, fontSize: '0.7rem', color: 'text.secondary' }}>
+                                                        {showToken ? '隐藏' : '显示'}
+                                                    </Button>
+                                                </InputAdornment>
+                                            ),
+                                        },
+                                    }}
+                                />
+                                <Tooltip title="验证并保存 Token" arrow>
+                                    <IconButton
+                                        color="primary"
+                                        onClick={handleVerify}
+                                        disabled={!formToken.trim() || authStatus.type === 'loading'}
+                                        sx={{ border: 1, borderColor: 'divider', borderRadius: 2, height: 40, width: 40, '&:hover': { borderColor: 'primary.main' } }}
+                                    >
+                                        {authStatus.type === 'loading' ? <CircularProgress size={18} /> : <SaveIcon />}
+                                    </IconButton>
+                                </Tooltip>
+                            </Stack>
+                            <Collapse in={authStatus.type !== 'idle'} unmountOnExit>
+                                <Box sx={{ mt: 1 }}>
+                                    {authStatus.type === 'success' && (
+                                        <Alert severity="success" icon={<CheckCircleIcon fontSize="inherit" />} sx={{ py: 0.3, borderRadius: 2, fontSize: '0.8rem' }}>
+                                            {authStatus.msg}
+                                        </Alert>
+                                    )}
+                                    {authStatus.type === 'error' && (
+                                        <Alert severity="error" icon={<ErrorIcon fontSize="inherit" />} sx={{ py: 0.3, borderRadius: 2, fontSize: '0.8rem' }}>
+                                            {authStatus.msg}
+                                        </Alert>
+                                    )}
+                                </Box>
+                            </Collapse>
+                            {!isConfigured && (
+                                <Typography variant="caption" color="text.disabled" sx={{ display: 'block', mt: 0.5 }}>
+                                    前往 <a href="https://next.bgm.tv/demo/access-token" target="_blank" rel="noopener noreferrer" style={{ color: primary }}>next.bgm.tv/demo/access-token</a> 创建
+                                </Typography>
+                            )}
+                        </Box>
+
+                        <Divider />
+
+                        {/* ── Action buttons ── */}
+                        {isConfigured && (
+                            <Box sx={{ display: 'flex', gap: 1.5 }}>
+                                <Tooltip title="将 Bangumi 所有收藏导入 GridTrax（搜索 TMDB 匹配）" arrow>
+                                    <span style={{ flex: 1 }}>
+                                        <Button
+                                            variant="outlined"
+                                            startIcon={syncRunning ? <CircularProgress size={16} color="inherit" /> : <FileDownloadIcon />}
+                                            onClick={handleImport}
+                                            disabled={syncRunning}
+                                            fullWidth
+                                            sx={{ borderRadius: 2, textTransform: 'none' }}
+                                        >
+                                            从 Bangumi 导入
+                                        </Button>
+                                    </span>
+                                </Tooltip>
+                                <Tooltip title="双向增量同步（处理冲突后推送）" arrow>
+                                    <span style={{ flex: 1 }}>
+                                        <Button
+                                            variant="contained"
+                                            startIcon={syncRunning ? <CircularProgress size={16} color="inherit" /> : <SyncIcon />}
+                                            onClick={handleIncrementalSync}
+                                            disabled={syncRunning}
+                                            fullWidth
+                                            sx={{ borderRadius: 2, fontWeight: 700, textTransform: 'none' }}
+                                        >
+                                            增量同步
+                                        </Button>
+                                    </span>
+                                </Tooltip>
+                            </Box>
+                        )}
+
+                        {/* ── Progress bar ── */}
+                        {syncRunning && importProgress && (
+                            <Box>
+                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
+                                    <CircularProgress size={13} />
+                                    <Typography variant="caption" color="text.secondary" noWrap sx={{ flex: 1 }}>
+                                        {syncMessage || '正在匹配…'}&nbsp;·&nbsp;{importProgress.name}
+                                    </Typography>
+                                    <Typography variant="caption" color="text.disabled" sx={{ whiteSpace: 'nowrap' }}>
+                                        {importProgress.current}/{importProgress.total}
+                                    </Typography>
+                                </Box>
+                                <Box sx={{ height: 4, borderRadius: 2, backgroundColor: alpha(primary, 0.15), overflow: 'hidden' }}>
+                                    <Box sx={{
+                                        height: '100%', borderRadius: 2, backgroundColor: primary,
+                                        width: `${(importProgress.current / importProgress.total) * 100}%`,
+                                        transition: 'width 0.3s ease',
+                                    }} />
+                                </Box>
+                            </Box>
+                        )}
+                        {syncRunning && !importProgress && syncMessage && (
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                <CircularProgress size={13} />
+                                <Typography variant="caption" color="text.secondary">{syncMessage}</Typography>
+                            </Box>
+                        )}
+
+                        {/* ── Summary ── */}
+                        {summary && (
+                            <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+                                <Chip label={`✓ 匹配 ${summary.matched} 条`} size="small" color="success" variant="outlined" />
+                                {summary.skipped > 0 && <Chip label={`✗ 跳过 ${summary.skipped} 条（TMDB 无结果）`} size="small" color="warning" variant="outlined" />}
+                                <Chip label={`共 ${summary.total} 条`} size="small" variant="outlined" />
+                            </Box>
+                        )}
+
+                        {/* ── Detailed log ── */}
+                        {log.length > 0 && (
+                            <Box>
+                                <Typography variant="overline" color="text.secondary" sx={{ fontWeight: 700, letterSpacing: 1, fontSize: '0.65rem' }}>
+                                    同步日志 (最新在上)
+                                </Typography>
+                                <Box sx={{
+                                    mt: 0.5,
+                                    maxHeight: 200,
+                                    overflow: 'auto',
+                                    borderRadius: 1.5,
+                                    border: `1px solid ${alpha(primary, 0.12)}`,
+                                    backgroundColor: alpha(primary, 0.03),
+                                }}>
+                                    {log.map((entry, idx) => (
+                                        <Box
+                                            key={idx}
+                                            sx={{
+                                                display: 'flex',
+                                                alignItems: 'baseline',
+                                                gap: 0.75,
+                                                px: 1.5,
+                                                py: 0.4,
+                                                borderBottom: idx < log.length - 1 ? `1px solid ${alpha(primary, 0.07)}` : 'none',
+                                            }}
+                                        >
+                                            <Typography
+                                                variant="caption"
+                                                sx={{ color: entry.success ? 'success.main' : 'warning.main', fontWeight: 700, flexShrink: 0 }}
+                                            >
+                                                {entry.success ? '✓' : '✗'}
+                                            </Typography>
+                                            <Typography variant="caption" fontWeight={500} noWrap sx={{ maxWidth: '40%', flexShrink: 0 }}>
+                                                {entry.name}
+                                            </Typography>
+                                            <Typography variant="caption" color="text.disabled" noWrap sx={{ flex: 1 }}>
+                                                {entry.detail}
+                                            </Typography>
+                                        </Box>
+                                    ))}
+                                </Box>
+                            </Box>
+                        )}
+                    </Stack>
+                </DialogContent>
+
+                <DialogActions sx={{ px: 3, pb: 2 }}>
+                    <Button onClick={() => setOpen(false)} disabled={syncRunning} sx={{ borderRadius: 2 }}>关闭</Button>
+                </DialogActions>
+            </Dialog>
+
+            <ConflictDialog
+                conflicts={conflicts}
+                open={conflictOpen}
+                onResolve={(pref) => resolver?.(pref)}
+            />
+        </>
+    );
+};
+
+export default BangumiSyncPanel;
+
+// ── Auto-push helper ──────────────────────────────────────────────────────────
+
+export async function autoPushToBangumi(
+    bangumi_subject_id: number | undefined,
+    collectionType: BangumiCollectionType | undefined,
+    rating: number,
+): Promise<void> {
+    const { token } = useBangumiStore.getState();
+    if (!token || !bangumi_subject_id || !collectionType) return;
+    try {
+        await bangumiPatchCollection(token, bangumi_subject_id, { type: collectionType, rate: rating });
+    } catch {
+        // Silently fail
+    }
+}
