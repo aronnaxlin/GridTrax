@@ -113,6 +113,7 @@ export type ProgressRecord = SeasonRecord | MovieRecord;
 export interface ProgressData {
   user_id: string;
   last_sync: number;
+  tmdb_api_key?: string;
   records: Record<string, ProgressRecord>;
 }
 

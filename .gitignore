@@ -16,3 +16,5 @@ tmdb_read_access_token
 
 # Logs
 *.log
+
+gridtrax.tar.gz

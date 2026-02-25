@@ -28,6 +28,8 @@ interface ProgressState {
     getSeasonRecord: (tvId: number, seasonNumber: number) => SeasonRecord | undefined;
     getMovieRecord: (movieId: number) => MovieRecord | undefined;
     getEpisodeRecord: (tvId: number, seasonNumber: number, episodeNumber: number) => EpisodeRecord;
+    // Settings
+    setTmdbApiKey: (key: string) => void;
 }
 
 const seasonKey = (tvId: number, seasonNumber: number) => `tmdb_tv_${tvId}_s${seasonNumber}`;
@@ -65,8 +67,14 @@ export const useProgressStore = create<ProgressState>()(
             data: {
                 user_id: 'local_user',
                 last_sync: Date.now(),
+                tmdb_api_key: '',
                 records: {},
             },
+
+            setTmdbApiKey: (key) =>
+                set((state) => ({
+                    data: { ...state.data, tmdb_api_key: key },
+                })),
 
             ensureSeasonRecord: (tvId, seasonNumber, meta) => {
                 const key = seasonKey(tvId, seasonNumber);

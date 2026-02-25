@@ -4,6 +4,7 @@ import CloudUploadIcon from '@mui/icons-material/CloudUpload';
 import DownloadIcon from '@mui/icons-material/Download';
 import ErrorIcon from '@mui/icons-material/Error';
 import FolderOpenIcon from '@mui/icons-material/FolderOpen';
+import SaveIcon from '@mui/icons-material/Save';
 import SettingsIcon from '@mui/icons-material/Settings';
 import SyncIcon from '@mui/icons-material/Sync';
 import UploadFileIcon from '@mui/icons-material/UploadFile';
@@ -82,8 +83,11 @@ const SyncPanel: React.FC = () => {
 
     const progressData = useProgressStore((s) => s.data);
 
+    const [tmdbKey, setTmdbKey] = useState(progressData.tmdb_api_key || '');
+
     const [webdavStatus, setWebdavStatus] = useState<StatusResult>(idle);
     const [jsonStatus, setJsonStatus] = useState<StatusResult>(idle);
+    const [generalStatus, setGeneralStatus] = useState<StatusResult>(idle);
     const [syncing, setSyncing] = useState(false);
 
     const fileInputRef = useRef<HTMLInputElement>(null);
@@ -94,8 +98,10 @@ const SyncPanel: React.FC = () => {
 
     const openDialog = () => {
         setFormConfig(config);
+        setTmdbKey(useProgressStore.getState().data.tmdb_api_key || '');
         setWebdavStatus(idle);
         setJsonStatus(idle);
+        setGeneralStatus(idle);
         setOpen(true);
     };
 
@@ -265,6 +271,64 @@ const SyncPanel: React.FC = () => {
                 <DialogContent sx={{ pt: 0 }}>
                     <Stack spacing={3}>
 
+                        {/* ── General Settings ── */}
+                        <Box>
+                            <Typography variant="overline" color="text.secondary" sx={{ fontWeight: 700, letterSpacing: 1 }}>
+                                全局设置
+                            </Typography>
+                            <Stack spacing={2} sx={{ mt: 1 }}>
+                                <Stack direction="row" spacing={1} alignItems="center">
+                                    <TextField
+                                        label="TMDB API Token (V4 Bearer)"
+                                        placeholder="留空则使用部署时的默认环境变量..."
+                                        value={tmdbKey}
+                                        onChange={(e) => setTmdbKey(e.target.value)}
+                                        size="small"
+                                        type={showPassword ? 'text' : 'password'}
+                                        fullWidth
+                                        slotProps={{
+                                            inputLabel: { shrink: true },
+                                            input: {
+                                                endAdornment: (
+                                                    <InputAdornment position="end">
+                                                        <Button
+                                                            size="small"
+                                                            onClick={() => setShowPassword((v) => !v)}
+                                                            sx={{ minWidth: 0, px: 1, fontSize: '0.7rem', color: 'text.secondary' }}
+                                                        >
+                                                            {showPassword ? '隐藏' : '显示'}
+                                                        </Button>
+                                                    </InputAdornment>
+                                                ),
+                                            },
+                                        }}
+                                    />
+                                    <Tooltip title="保存设置" placement="top" arrow>
+                                        <IconButton
+                                            color="primary"
+                                            onClick={() => {
+                                                useProgressStore.getState().setTmdbApiKey(tmdbKey);
+                                                setGeneralStatus({ type: 'success', message: 'API Key 已更新，刷新页面生效。' });
+                                            }}
+                                            sx={{
+                                                border: 1,
+                                                borderColor: 'divider',
+                                                borderRadius: 2,
+                                                height: 40,
+                                                width: 40,
+                                                '&:hover': { borderColor: 'primary.main', backgroundColor: (t) => alpha(t.palette.primary.main, 0.08) },
+                                            }}
+                                        >
+                                            <SaveIcon />
+                                        </IconButton>
+                                    </Tooltip>
+                                </Stack>
+                                <StatusAlert status={generalStatus} />
+                            </Stack>
+                        </Box>
+
+                        <Divider />
+
                         {/* ── JSON Import/Export ── */}
                         <Box>
                             <Typography variant="overline" color="text.secondary" sx={{ fontWeight: 700, letterSpacing: 1 }}>
@@ -374,16 +438,7 @@ const SyncPanel: React.FC = () => {
                                     }}
                                 />
 
-                                <Box sx={{ display: 'flex', justifyContent: 'flex-end' }}>
-                                    <Button
-                                        variant="contained"
-                                        onClick={handleSaveConfig}
-                                        disabled={!isFormValid}
-                                        sx={{ borderRadius: 2 }}
-                                    >
-                                        保存配置
-                                    </Button>
-                                </Box>
+
                             </Stack>
                         </Box>
 
@@ -437,6 +492,24 @@ const SyncPanel: React.FC = () => {
                                         }}
                                     >
                                         <CloudUploadIcon />
+                                    </IconButton>
+                                </span>
+                            </Tooltip>
+
+                            {/* Icon-only: save config */}
+                            <Tooltip title="仅保存配置 (不同步)" arrow>
+                                <span>
+                                    <IconButton
+                                        onClick={handleSaveConfig}
+                                        disabled={!isFormValid}
+                                        sx={{
+                                            border: 1,
+                                            borderColor: 'divider',
+                                            borderRadius: 2,
+                                            '&:hover': { borderColor: 'primary.main', color: 'primary.main' },
+                                        }}
+                                    >
+                                        <SaveIcon />
                                     </IconButton>
                                 </span>
                             </Tooltip>

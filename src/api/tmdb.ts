@@ -6,15 +6,25 @@ import type {
     TMDBTVShow,
 } from '../types';
 
+import { useProgressStore } from '../store/useProgressStore';
+
 const BASE_URL = 'https://api.themoviedb.org/3';
-const BEARER = import.meta.env.VITE_TMDB_BEARER as string;
+const ENV_BEARER = import.meta.env.VITE_TMDB_BEARER as string;
 
 const tmdbAxios = axios.create({
     baseURL: BASE_URL,
     headers: {
-        Authorization: `Bearer ${BEARER}`,
         'Content-Type': 'application/json;charset=utf-8',
     },
+});
+
+tmdbAxios.interceptors.request.use((config) => {
+    const storeKey = useProgressStore.getState().data.tmdb_api_key;
+    const token = storeKey || ENV_BEARER;
+    if (token) {
+        config.headers.Authorization = `Bearer ${token}`;
+    }
+    return config;
 });
 
 export const IMAGE_BASE = 'https://image.tmdb.org/t/p/';
