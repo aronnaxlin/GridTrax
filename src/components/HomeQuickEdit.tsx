@@ -16,6 +16,7 @@ import { alpha, useTheme } from '@mui/material/styles';
 import React from 'react';
 import { useProgressStore } from '../store/useProgressStore';
 import { STATUS_LABELS, type WatchStatus } from '../types';
+import { StatusIcons } from './GlobalStatusPicker';
 
 interface HomeQuickEditProps {
     recordKey: string; // e.g. 'tv_season' or 'movie'
@@ -30,13 +31,7 @@ interface HomeQuickEditProps {
     };
 }
 
-const STATUS_EMOJI: Record<WatchStatus, string> = {
-    Wish: '🔖',
-    Do: '▶️',
-    Collect: '✅',
-    OnHold: '⏸️',
-    Dropped: '🗑️',
-};
+
 
 const STATUSES: WatchStatus[] = ['Wish', 'Do', 'Collect', 'OnHold', 'Dropped'];
 
@@ -126,7 +121,7 @@ const HomeQuickEdit: React.FC<HomeQuickEditProps> = ({
                     },
                 }}
             >
-                <DialogTitle sx={{ pb: 1 }}>
+                <DialogTitle sx={{ pb: 1, display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 1 }}>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
                         <Typography fontWeight={700} variant="subtitle1">{titleText}</Typography>
                         {tagText && tagText !== titleText && (
@@ -150,11 +145,12 @@ const HomeQuickEdit: React.FC<HomeQuickEditProps> = ({
                         size="small"
                         onClick={handleDelete}
                         sx={{
-                            color: 'error.main',
-                            ml: 'auto',
-                            '&:hover': { backgroundColor: alpha(theme.palette.error.main, 0.1) },
+                            color: 'text.secondary',
+                            mt: -0.5,
+                            mr: -1,
+                            '&:hover': { color: 'error.main', backgroundColor: alpha(theme.palette.error.main, 0.1) },
                         }}
-                        title="删除该记录"
+                        title="从追踪列表中删除"
                     >
                         <DeleteIcon fontSize="small" />
                     </IconButton>
@@ -189,6 +185,7 @@ const HomeQuickEdit: React.FC<HomeQuickEditProps> = ({
                                     borderRadius: '8px !important',
                                     fontSize: '0.75rem',
                                     fontWeight: 600,
+                                    gap: 0.6,
                                     color: currentStatus === s ? '#000' : 'text.secondary',
                                     background: currentStatus === s ? primary : alpha(primary, 0.1),
                                     '&.Mui-selected': {
@@ -199,7 +196,7 @@ const HomeQuickEdit: React.FC<HomeQuickEditProps> = ({
                                     '&:hover': { background: alpha(primary, 0.2) },
                                 }}
                             >
-                                {STATUS_EMOJI[s]} {STATUS_LABELS[s]}
+                                {StatusIcons[s]} {STATUS_LABELS[s]}
                             </ToggleButton>
                         ))}
                     </ToggleButtonGroup>

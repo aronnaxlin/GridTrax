@@ -342,7 +342,7 @@ const SyncPanel: React.FC = () => {
                                             color="primary"
                                             onClick={() => {
                                                 useProgressStore.getState().setTmdbApiKey(tmdbKey);
-                                                setGeneralStatus({ type: 'success', message: 'API Key 已更新，刷新页面生效。' });
+                                                setGeneralStatus({ type: 'success', message: 'TMDB Token 已保存，立即生效。' });
                                             }}
                                             sx={{
                                                 border: 1,

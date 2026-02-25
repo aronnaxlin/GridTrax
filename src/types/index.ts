@@ -99,6 +99,8 @@ export interface SeasonRecord {
   rating: number; // 0-10
   global_comment: string;
   episodes: Record<string, EpisodeRecord>;
+  /** Unix ms timestamp of last user interaction (status/episode/rating change) */
+  last_interacted?: number;
 }
 
 export interface MovieRecord {
@@ -109,6 +111,8 @@ export interface MovieRecord {
   global_status?: WatchStatus;
   rating: number;
   global_comment: string;
+  /** Unix ms timestamp of last user interaction */
+  last_interacted?: number;
 }
 
 export type ProgressRecord = SeasonRecord | MovieRecord;
@@ -136,3 +140,6 @@ export const STATUS_COLORS: Record<WatchStatus, string> = {
   OnHold: '#7E5700',
   Dropped: '#BA1A1A',
 };
+
+/** Sorting modes for home page */
+export type SortMode = 'recent' | 'name' | 'rating';

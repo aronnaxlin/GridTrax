@@ -31,7 +31,7 @@ const HomeMovieActiveCard: React.FC<HomeMovieActiveCardProps> = ({
         <Card
             sx={{
                 display: 'flex',
-                flexDirection: 'row',
+                flexDirection: 'column',
                 mb: 3,
                 borderRadius: 2,
                 backgroundColor: alpha(primary, 0.03),
@@ -42,53 +42,57 @@ const HomeMovieActiveCard: React.FC<HomeMovieActiveCardProps> = ({
                 }
             }}
         >
-            {/* Poster */}
-            <Box
-                sx={{ cursor: 'pointer', flexShrink: 0 }}
-                onClick={() => navigate(`/movie/${movieId}`)}
-            >
-                {poster ? (
-                    <Box
-                        component="img"
-                        src={poster}
-                        alt={titleText}
-                        sx={{ width: 80, height: 120, borderRadius: '8px 0 0 8px', objectFit: 'cover' }}
-                    />
-                ) : (
-                    <Box sx={{
-                        width: 80, height: 120, borderRadius: '8px 0 0 8px',
-                        backgroundColor: alpha(primary, 0.1),
-                        display: 'flex', alignItems: 'center', justifyContent: 'center'
-                    }}>
-                        <Typography variant="caption" color="primary">No Poster</Typography>
-                    </Box>
-                )}
-            </Box>
-
-            {/* Info */}
-            <Box
-                sx={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', p: 2, cursor: 'pointer' }}
-                onClick={() => navigate(`/movie/${movieId}`)}
-            >
-                <Typography variant="h6" fontWeight={700} sx={{ mb: 0.5 }}>{titleText}</Typography>
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                    <Typography variant="body2" color="text.secondary">电影 · 在看</Typography>
-                    {record?.rating ? (
-                        <Typography variant="body2" sx={{ color: primary, fontWeight: 700 }}>
-                            ★ {record.rating}/10
-                        </Typography>
-                    ) : null}
+            <Box sx={{ display: 'flex', p: 2 }}>
+                {/* Poster */}
+                <Box
+                    sx={{ cursor: 'pointer', flexShrink: 0 }}
+                    onClick={() => navigate(`/movie/${movieId}`)}
+                >
+                    {poster ? (
+                        <Box
+                            component="img"
+                            src={poster}
+                            alt={titleText}
+                            sx={{ width: 80, height: 120, borderRadius: 1.5, objectFit: 'cover', mr: 2 }}
+                        />
+                    ) : (
+                        <Box sx={{
+                            width: 80, height: 120, borderRadius: 1.5, mr: 2,
+                            backgroundColor: alpha(primary, 0.1),
+                            display: 'flex', alignItems: 'center', justifyContent: 'center'
+                        }}>
+                            <Typography variant="caption" color="primary">No Poster</Typography>
+                        </Box>
+                    )}
                 </Box>
-            </Box>
 
-            {/* Quick Edit */}
-            <Box sx={{ display: 'flex', alignItems: 'flex-start', p: 1.5, pt: 2 }}>
-                <HomeQuickEdit
-                    recordKey={`movie_${movieId}`}
-                    type="movie"
-                    tmdbId={movieId}
-                    meta={meta}
-                />
+                {/* Info */}
+                <Box
+                    sx={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', cursor: 'pointer' }}
+                    onClick={() => navigate(`/movie/${movieId}`)}
+                >
+                    <Box sx={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 1, mb: 0.5 }}>
+                        <Typography variant="h6" fontWeight={700}>{titleText}</Typography>
+                    </Box>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                        <Typography variant="body2" color="text.secondary">电影 · 在看</Typography>
+                        {record?.rating ? (
+                            <Typography variant="body2" sx={{ color: primary, fontWeight: 700 }}>
+                                ★ {record.rating}/10
+                            </Typography>
+                        ) : null}
+                    </Box>
+                </Box>
+
+                {/* Quick Edit */}
+                <Box sx={{ display: 'flex', alignItems: 'flex-start', pt: 0.5 }}>
+                    <HomeQuickEdit
+                        recordKey={`movie_${movieId}`}
+                        type="movie"
+                        tmdbId={movieId}
+                        meta={meta}
+                    />
+                </Box>
             </Box>
         </Card>
     );

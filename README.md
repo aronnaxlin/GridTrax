@@ -38,61 +38,84 @@
 
 ## 🚀 部署与使用教程
 
-由于这是一个前端项目，它的部署极其简单。您可以将其直接部署在任何静态网页托管服务上（如 Vercel, Cloudflare Pages），或使用 Docker 部署在您自己的 VPS 上。
+这是一个纯前端 SPA 项目，构建产物为静态文件。可部署在任何静态托管服务（Vercel, Cloudflare Pages）、Docker 或 Node.js 环境中。
 
 ### 准备工作：获取 TMDB API Key
+
 1. 注册并登录 [TMDB](https://www.themoviedb.org/)。
-2. 进入 Account Settings -> API，申请一个 API Key (v4 auth - API Read Access Token)。
-3. 获取到一长串的 `Bearer Token`。
-
-### 方式一：一键部署 (推荐)
-
-项目内置了 `deploy.sh` 脚本，可自动完成构建与运行：
-
-```bash
-# 赋予执行权限
-chmod +x deploy.sh
-# 运行脚本
-./deploy.sh
-```
-脚本会自动从 `.env.local` 读取 Token，并引导您选择是否开启 SSL。
-
----
-
-### 方式二：手动 Docker 部署 (VPS 用户)
-
-如果您想手动控制过程：
-
-```bash
-docker build --build-arg VITE_TMDB_BEARER="你的_BEARER_TOKEN" -t gridtrax .
-docker run -d --name gridtrax -p 0721:721 gridtrax
-```
-启动后在浏览器访问 `http://<您的IP>:0721` 即可。
-
-> **提示**：如果您想在本地电脑 build 好镜像再传到云主机，可以使用 `docker save gridtrax | gzip > gridtrax.tar.gz` 导出，并通过 `scp` 上传再 `docker load`。
-
-### 方式二：本地开发 & Node.js 源码部署
-
-1. **克隆项目并安装依赖**：
-   ```bash
-   git clone https://github.com/yourusername/GridTrax.git
-   cd GridTrax
-   npm install
-   ```
-2. **配置环境变量**：
-   在根目录创建 `.env.local` 文件，并填入您的 TMDB Token：
+2. 进入 Account Settings → API，申请一个 API Key (v4 auth - API Read Access Token)。
+3. 在项目根目录创建 `.env.local` 文件：
    ```env
    VITE_TMDB_BEARER=您的超长BearerToken
    ```
-3. **启动开发服务器**：
-   ```bash
-   npm run dev
-   ```
-4. **编译为静态文件 (用于生产环境部署)**：
-   ```bash
-   npm run build
-   ```
-   编译后，`dist/` 文件夹即可直接丢进 Nginx/Apache 或任何静态托管平台。配置 Nginx 时别忘了加上 `try_files $uri $uri/ /index.html;` 来解决客户端路由 404 问题。
+
+---
+
+### 方式一：Docker Compose 部署 (推荐)
+
+```bash
+# HTTP 模式
+docker compose --env-file .env.local up -d --build
+
+# HTTPS 模式 (需要 Let's Encrypt 证书)
+COMPOSE_PROFILES=ssl docker compose --env-file .env.local up -d --build
+
+# 自定义端口
+GRIDTRAX_PORT=8080 docker compose --env-file .env.local up -d --build
+```
+
+> `docker-compose.yml` 会自动从 `.env.local` 读取 `VITE_TMDB_BEARER`。默认端口 **721**。
+
+---
+
+### 方式二：一键脚本部署
+
+```bash
+chmod +x deploy.sh
+
+./deploy.sh                  # HTTP 模式
+./deploy.sh --ssl            # HTTPS 模式
+./deploy.sh --port 8080      # 自定义端口
+./deploy.sh --ssl --port 443 # HTTPS + 自定义端口
+```
+
+---
+
+### 方式三：NPM 直接部署
+
+无需 Docker，直接使用 Node.js（≥ 18）运行：
+
+```bash
+# 克隆并安装
+git clone https://github.com/yourusername/GridTrax.git
+cd GridTrax
+npm install
+
+# 配置 .env.local (见上方)
+
+# 开发模式
+npm run dev
+
+# 构建 + 启动静态服务 (端口 721)
+npm run serve
+
+# 或者分步操作：先 build，再 start
+npm run build
+npm run start
+```
+
+> `dist/` 目录也可以直接丢进 Nginx/Apache/Caddy。使用 Nginx 时请配置 `try_files $uri $uri/ /index.html;` 以支持 SPA 路由。
+
+---
+
+### 手动 Docker 构建 (不使用 Compose)
+
+```bash
+docker build --build-arg VITE_TMDB_BEARER="你的_TOKEN" -t gridtrax .
+docker run -d --name gridtrax -p 721:721 --restart unless-stopped gridtrax
+```
+
+> **提示**：离线传输镜像可使用 `docker save gridtrax | gzip > gridtrax.tar.gz`，远端执行 `docker load < gridtrax.tar.gz`。
 
 ---
 

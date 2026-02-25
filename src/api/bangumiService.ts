@@ -165,6 +165,23 @@ export async function bangumiPostCollection(
     }
 }
 
+/**
+ * GET /v0/users/-/collections/{subject_id}
+ * Returns the user's current collection entry for this subject, or null if not collected.
+ */
+export async function bangumiGetSubjectCollection(
+    token: string,
+    subject_id: number,
+): Promise<{ type: BangumiCollectionType; rate: number } | null> {
+    const res = await fetch(`${BGM_BASE}/v0/users/-/collections/${subject_id}`, {
+        headers: makeHeaders(token),
+    });
+    if (res.status === 404 || res.status === 401 || res.status === 400) return null;
+    if (!res.ok) return null; // Treat errors as "not found" to avoid blocking the user
+    const data = await res.json() as { type: BangumiCollectionType; rate: number };
+    return data;
+}
+
 /** PATCH /v0/users/-/collections/{subject_id}/episodes — set episode watch states */
 export async function bangumiPutEpisodes(
     token: string,

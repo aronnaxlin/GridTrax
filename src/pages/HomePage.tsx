@@ -1,39 +1,161 @@
-import { Box, Card, CardActionArea, CardContent, CardMedia, Container, Grid, Typography } from '@mui/material';
+import SortIcon from '@mui/icons-material/Sort';
+import { Box, Card, CardActionArea, CardContent, CardMedia, Container, Grid, IconButton, Menu, MenuItem, Typography } from '@mui/material';
 import { alpha, useTheme } from '@mui/material/styles';
-import React, { useMemo } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { getPosterUrl } from '../api/tmdb';
 import HomeActiveCard from '../components/HomeActiveCard';
 import HomeMovieActiveCard from '../components/HomeMovieActiveCard';
 import { useProgressStore } from '../store/useProgressStore';
-import { STATUS_LABELS, type MovieRecord, type SeasonRecord } from '../types';
+import { STATUS_LABELS, type MovieRecord, type ProgressRecord, type SeasonRecord, type SortMode, type WatchStatus } from '../types';
+
+// ─── Sorting helpers ─────────────────────────────────────────
+
+const zhCollator = new Intl.Collator('zh-Hans-CN', { sensitivity: 'base', numeric: true });
+
+const SORT_LABELS: Record<SortMode, string> = {
+    recent: '最近互动',
+    name: '名称',
+    rating: '评分',
+};
+
+const getRecordName = (r: ProgressRecord): string => {
+    if (r.type === 'tv_season') {
+        return (r as SeasonRecord).show_name || r.name || '';
+    }
+    return r.name || '';
+};
+
+/**
+ * Sort records by the given mode.
+ * For "rating": user rating descending; unrated items fall back to
+ *               recent-interaction order and are placed AFTER all rated items.
+ */
+const sortRecords = (items: ProgressRecord[], mode: SortMode): ProgressRecord[] => {
+    const sorted = [...items];
+    switch (mode) {
+        case 'recent':
+            sorted.sort((a, b) => (b.last_interacted ?? 0) - (a.last_interacted ?? 0));
+            break;
+        case 'name':
+            sorted.sort((a, b) => zhCollator.compare(getRecordName(a), getRecordName(b)));
+            break;
+        case 'rating': {
+            const rated = sorted.filter((r) => r.rating > 0);
+            const unrated = sorted.filter((r) => !r.rating);
+            rated.sort((a, b) => b.rating - a.rating);
+            unrated.sort((a, b) => (b.last_interacted ?? 0) - (a.last_interacted ?? 0));
+            return [...rated, ...unrated];
+        }
+    }
+    return sorted;
+};
+
+// ─── Per-section localStorage persistence ────────────────────
+
+const STORAGE_PREFIX = 'gridtrax-sort-';
+const ALL_STATUSES: WatchStatus[] = ['Do', 'Wish', 'Collect', 'OnHold', 'Dropped'];
+
+const getSectionSortMode = (status: WatchStatus): SortMode => {
+    try {
+        const stored = localStorage.getItem(STORAGE_PREFIX + status);
+        if (stored && (stored === 'recent' || stored === 'name' || stored === 'rating')) return stored;
+    } catch { /* noop */ }
+    return 'recent';
+};
+
+const saveSectionSortMode = (status: WatchStatus, mode: SortMode) => {
+    try { localStorage.setItem(STORAGE_PREFIX + status, mode); } catch { /* noop */ }
+};
+
+// ─── SectionSortButton sub-component ─────────────────────────
+
+interface SectionSortButtonProps {
+    sortMode: SortMode;
+    onSortChange: (mode: SortMode) => void;
+    primary: string;
+}
+
+const SectionSortButton: React.FC<SectionSortButtonProps> = ({ sortMode, onSortChange, primary }) => {
+    const [anchor, setAnchor] = useState<null | HTMLElement>(null);
+    return (
+        <>
+            <IconButton
+                size="small"
+                onClick={(e) => setAnchor(e.currentTarget)}
+                sx={{
+                    color: 'text.secondary',
+                    border: `1px solid ${alpha(primary, 0.15)}`,
+                    borderRadius: 1.5,
+                    px: 1,
+                    py: 0.25,
+                    gap: 0.4,
+                    ml: 1,
+                }}
+            >
+                <SortIcon sx={{ fontSize: 16 }} />
+                <Typography variant="caption" fontSize="0.7rem" fontWeight={600}>{SORT_LABELS[sortMode]}</Typography>
+            </IconButton>
+            <Menu
+                anchorEl={anchor}
+                open={Boolean(anchor)}
+                onClose={() => setAnchor(null)}
+                anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+                transformOrigin={{ vertical: 'top', horizontal: 'right' }}
+                slotProps={{ paper: { sx: { borderRadius: 2, minWidth: 130 } } }}
+            >
+                {(['recent', 'name', 'rating'] as SortMode[]).map((mode) => (
+                    <MenuItem
+                        key={mode}
+                        selected={sortMode === mode}
+                        onClick={() => { onSortChange(mode); setAnchor(null); }}
+                        sx={{ fontSize: '0.85rem', fontWeight: sortMode === mode ? 700 : 400 }}
+                    >
+                        {SORT_LABELS[mode]}
+                    </MenuItem>
+                ))}
+            </Menu>
+        </>
+    );
+};
+
+// ─── HomePage ────────────────────────────────────────────────
 
 const HomePage: React.FC = () => {
     const theme = useTheme();
     const navigate = useNavigate();
     const records = useProgressStore((state) => state.data.records);
+    const primary = theme.palette.primary.main;
+
+    // Per-section sort modes
+    const [sortModes, setSortModes] = useState<Record<WatchStatus, SortMode>>(() => {
+        const init = {} as Record<WatchStatus, SortMode>;
+        for (const s of ALL_STATUSES) init[s] = getSectionSortMode(s);
+        return init;
+    });
+
+    const handleSortChange = useCallback((status: WatchStatus, mode: SortMode) => {
+        setSortModes((prev) => ({ ...prev, [status]: mode }));
+        saveSectionSortMode(status, mode);
+    }, []);
 
     const trackedItems = useMemo(() => {
-        return Object.values(records)
-            .filter((record) => record.global_status)
-            .sort((a, b) => (b.rating || 0) - (a.rating || 0));
+        return Object.values(records).filter((record) => record.global_status);
     }, [records]);
 
     const itemsByStatus = useMemo(() => {
-        const groups = {
-            Do: [] as (SeasonRecord | MovieRecord)[],
-            Wish: [] as (SeasonRecord | MovieRecord)[],
-            Collect: [] as (SeasonRecord | MovieRecord)[],
-            OnHold: [] as (SeasonRecord | MovieRecord)[],
-            Dropped: [] as (SeasonRecord | MovieRecord)[],
+        const groups: Record<WatchStatus, (SeasonRecord | MovieRecord)[]> = {
+            Do: [], Wish: [], Collect: [], OnHold: [], Dropped: [],
         };
-        trackedItems.forEach(item => {
-            if (item.global_status) {
-                groups[item.global_status].push(item);
-            }
+        trackedItems.forEach((item) => {
+            if (item.global_status) groups[item.global_status].push(item);
         });
+        // Sort each group with its own mode
+        for (const s of ALL_STATUSES) {
+            groups[s] = sortRecords(groups[s], sortModes[s]) as (SeasonRecord | MovieRecord)[];
+        }
         return groups;
-    }, [trackedItems]);
+    }, [trackedItems, sortModes]);
 
     const handleCardClick = (record: SeasonRecord | MovieRecord) => {
         if (record.type === 'tv_season') {
@@ -43,19 +165,13 @@ const HomePage: React.FC = () => {
         }
     };
 
-    const primary = theme.palette.primary.main;
-
     const renderCompactCard = (record: SeasonRecord | MovieRecord) => {
         const isTv = record.type === 'tv_season';
         const tvRecord = isTv ? (record as SeasonRecord) : null;
-
-        // ShowName is priority. If not available, fallback to Name.
         const titleText = isTv
             ? (tvRecord?.show_name || tvRecord?.name || `剧集 ID: ${record.tmdb_id}`)
             : (record.name || `电影 ID: ${record.tmdb_id}`);
-
         const tagText = isTv ? (tvRecord?.name || `第 ${tvRecord?.season_number} 季`) : '电影';
-
         const key = `${record.type}-${record.tmdb_id}-${isTv ? tvRecord?.season_number : ''}`;
 
         return (
@@ -128,6 +244,28 @@ const HomePage: React.FC = () => {
         );
     };
 
+    // ─── Section header with inline sort button ──────────────
+    const renderSectionHeader = (status: WatchStatus, count: number) => (
+        <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+            <Typography
+                variant="subtitle1"
+                fontWeight={700}
+                sx={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    '&::before': { content: '""', width: 4, height: 16, backgroundColor: primary, mr: 1, borderRadius: 1 },
+                }}
+            >
+                {STATUS_LABELS[status]} ({count})
+            </Typography>
+            <SectionSortButton
+                sortMode={sortModes[status]}
+                onSortChange={(mode) => handleSortChange(status, mode)}
+                primary={primary}
+            />
+        </Box>
+    );
+
     return (
         <Box sx={{ minHeight: '100vh' }}>
             <Container maxWidth="lg" sx={{ pt: 2, pb: 6 }}>
@@ -146,9 +284,10 @@ const HomePage: React.FC = () => {
                     </Box>
                 ) : (
                     <Box>
-                        {/* Doing Section */}
+                        {/* ── 在看 (Do) Section ─────────────── */}
                         {itemsByStatus.Do.length > 0 && (
                             <Box sx={{ mb: 6 }}>
+                                {renderSectionHeader('Do', itemsByStatus.Do.length)}
                                 {itemsByStatus.Do.map((record) => {
                                     if (record.type === 'tv_season') {
                                         return (
@@ -163,7 +302,6 @@ const HomePage: React.FC = () => {
                                             />
                                         );
                                     } else {
-                                        // Doing Movie -> use long-card layout, matching TV season cards
                                         const mvRecord = record as MovieRecord;
                                         return (
                                             <HomeMovieActiveCard
@@ -178,16 +316,14 @@ const HomePage: React.FC = () => {
                             </Box>
                         )}
 
-                        {/* Other Statuses Shelves */}
+                        {/* ── Other Statuses ─────────────── */}
                         {(['Wish', 'Collect', 'OnHold', 'Dropped'] as const).map((status) => {
                             const items = itemsByStatus[status];
                             if (items.length === 0) return null;
 
                             return (
                                 <Box key={status} sx={{ mb: 5 }}>
-                                    <Typography variant="subtitle1" fontWeight={700} sx={{ mb: 2, display: 'flex', alignItems: 'center', '&::before': { content: '""', width: 4, height: 16, backgroundColor: primary, mr: 1, borderRadius: 1 } }}>
-                                        {STATUS_LABELS[status]} ({items.length})
-                                    </Typography>
+                                    {renderSectionHeader(status, items.length)}
                                     <Grid container spacing={2}>
                                         {items.map(renderCompactCard)}
                                     </Grid>

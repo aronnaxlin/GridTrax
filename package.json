@@ -7,7 +7,9 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview --port 721",
+    "serve": "npm run build && npx -y serve dist -l 721 -s",
+    "start": "npx -y serve dist -l 721 -s"
   },
   "dependencies": {
     "@emotion/react": "^11.14.0",

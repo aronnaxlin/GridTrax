@@ -32,6 +32,7 @@ import {
     bangumiGetCollections,
     bangumiGetEpisodes,
     bangumiGetMe,
+    bangumiGetSubjectCollection,
     bangumiGetUserEpisodes,
     bangumiPostCollection,
     bangumiPutEpisodes,
@@ -335,7 +336,7 @@ const BangumiSyncPanel: React.FC = () => {
             setSummary({ matched, skipped, total });
             setSyncMessage('');
         } catch (e) {
-            setSyncMessage('');
+            setSyncMessage(`导入出错：${(e as Error).message}`);
             setImportProgress(null);
         } finally {
             setSyncRunning(false);
@@ -454,8 +455,26 @@ const BangumiSyncPanel: React.FC = () => {
                     },
                 }));
 
-                // Push status to Bangumi (creates new entry if not exists)
-                if (sr.global_status) {
+                // Check if subject already exists in user's Bangumi collection
+                const existingBgm = await bangumiGetSubjectCollection(token, match.id);
+
+                if (existingBgm) {
+                    // Already in Bangumi collection — do NOT overwrite; let Pass 2 detect conflict
+                    addLog({ name: displayName, success: true, detail: `🔗 已关联「${match.name_cn || match.name}」(Bangumi 已有记录，交由增量同步处理)` });
+                    // Add real Bangumi status to bgmMap so Pass 2 can compare correctly
+                    bgmMap.set(match.id, {
+                        subject_id: match.id,
+                        subject_type: 2,
+                        rate: existingBgm.rate,
+                        type: existingBgm.type,
+                        comment: null,
+                        ep_status: 0,
+                        vol_status: 0,
+                        updated_at: new Date().toISOString(),
+                        subject: { id: match.id, name: match.name, name_cn: match.name_cn, type: 2 },
+                    });
+                } else if (sr.global_status) {
+                    // Not yet in Bangumi — safe to push
                     try {
                         await bangumiPostCollection(token, match.id, {
                             type: GRIDTRAX_TO_BANGUMI[sr.global_status],
@@ -463,23 +482,23 @@ const BangumiSyncPanel: React.FC = () => {
                         });
                         addLog({ name: displayName, success: true, detail: `✅ 已在 Bangumi 新建「${match.name_cn || match.name}」· ${sr.global_status}` });
                         newPushed++;
+                        // Add to bgmMap reflecting the status we just pushed
+                        bgmMap.set(match.id, {
+                            subject_id: match.id,
+                            subject_type: 2,
+                            rate: sr.rating || 0,
+                            type: GRIDTRAX_TO_BANGUMI[sr.global_status],
+                            comment: null,
+                            ep_status: 0,
+                            vol_status: 0,
+                            updated_at: new Date().toISOString(),
+                            subject: { id: match.id, name: match.name, name_cn: match.name_cn, type: 2 },
+                        });
                     } catch (err) {
                         addLog({ name: displayName, success: false, detail: `推送失败：${(err as Error).message}` });
                     }
                 }
 
-                // Add to bgmMap so conflict pass doesn't re-process
-                bgmMap.set(match.id, {
-                    subject_id: match.id,
-                    subject_type: 2,
-                    rate: sr.rating || 0,
-                    type: GRIDTRAX_TO_BANGUMI[sr.global_status!],
-                    comment: null,
-                    ep_status: 0,
-                    vol_status: 0,
-                    updated_at: new Date().toISOString(),
-                    subject: { id: match.id, name: match.name, name_cn: match.name_cn, type: 2 },
-                });
                 await new Promise((r) => setTimeout(r, 250));
             }
 
@@ -563,7 +582,7 @@ const BangumiSyncPanel: React.FC = () => {
                         .map(([num]) => Number(num))
                         .sort((a, b) => a - b);
 
-                    if (localWatched.length > 0 || true /* always check for remote progress */) {
+                    {  // always check remote episode progress alongside local
                         try {
                             let epIds = sr.bangumi_episode_ids;
                             if (!epIds) {
@@ -571,6 +590,20 @@ const BangumiSyncPanel: React.FC = () => {
                                 epIds = Object.fromEntries(
                                     epList.map((ep: { sort: number; id: number }) => [String(Math.round(ep.sort)), ep.id])
                                 );
+                                // Bug 7 fix: persist the episode ID cache so future syncs skip this fetch
+                                const recKeyForCache = `tmdb_tv_${sr.tmdb_id}_s${sr.season_number}`;
+                                useProgressStore.setState((s) => ({
+                                    data: {
+                                        ...s.data,
+                                        records: {
+                                            ...s.data.records,
+                                            [recKeyForCache]: {
+                                                ...s.data.records[recKeyForCache],
+                                                bangumi_episode_ids: epIds,
+                                            },
+                                        },
+                                    },
+                                }));
                             }
                             const remoteEps = await bangumiGetUserEpisodes(token, sr.bangumi_subject_id);
                             const remoteWatched = remoteEps
@@ -630,15 +663,28 @@ const BangumiSyncPanel: React.FC = () => {
                         }
                         addLog({ name: conflict.showName, success: true, detail: `集数 GridTrax→Bangumi · ${bgmEpIds.length} 集` });
                     } else {
-                        // Bangumi → GridTrax
+                        // Bangumi → GridTrax: explicitly set watched state rather than blindly toggling
                         const currentStore = useProgressStore.getState();
                         const remoteSet = new Set(conflict.remoteWatched);
                         const localSet = new Set(conflict.localWatched);
+                        const recKey = `tmdb_tv_${conflict.tmdbId}_s${conflict.seasonNumber}`;
+                        // Mark remote-watched episodes that aren't locally watched yet
                         for (const ep of conflict.remoteWatched) {
-                            if (!localSet.has(ep)) currentStore.toggleEpisodeWatched(conflict.tmdbId, conflict.seasonNumber, ep);
+                            if (!localSet.has(ep)) {
+                                const existing = (currentStore.data.records[recKey] as SeasonRecord | undefined)?.episodes?.[String(ep)];
+                                if (!existing?.watched) {
+                                    currentStore.toggleEpisodeWatched(conflict.tmdbId, conflict.seasonNumber, ep);
+                                }
+                            }
                         }
+                        // Unmark local-watched episodes that aren't in remote
                         for (const ep of conflict.localWatched) {
-                            if (!remoteSet.has(ep)) currentStore.toggleEpisodeWatched(conflict.tmdbId, conflict.seasonNumber, ep);
+                            if (!remoteSet.has(ep)) {
+                                const existing = (currentStore.data.records[recKey] as SeasonRecord | undefined)?.episodes?.[String(ep)];
+                                if (existing?.watched) {
+                                    currentStore.toggleEpisodeWatched(conflict.tmdbId, conflict.seasonNumber, ep);
+                                }
+                            }
                         }
                         addLog({ name: conflict.showName, success: true, detail: `集数 Bangumi→GridTrax · ${conflict.remoteWatched.length} 集` });
                     }
@@ -966,6 +1012,93 @@ export async function autoPushToBangumi(
         await bangumiPostCollection(token, bangumi_subject_id, { type: collectionType, rate: rating });
     } catch {
         // Silently fail
+    }
+}
+
+/**
+ * When a new TV season is added/status-changed, silently search Bangumi for a matching entry.
+ * - If found AND not yet in user's Bangumi collection: cache `bangumi_subject_id` and push current status.
+ * - If found AND already in user's Bangumi collection: only cache `bangumi_subject_id`, do NOT push
+ *   (user may have a different status on Bangumi — let incremental sync handle the conflict).
+ * - If not found: mark `bangumi_scanned: true` so we never search again.
+ * This is best-effort and totally non-blocking.
+ */
+export async function autoLinkAndPushToBangumi(
+    tvId: number,
+    seasonNumber: number,
+    showName: string | undefined,
+    status: import('../types').WatchStatus,
+    rating: number,
+): Promise<void> {
+    const { token } = useBangumiStore.getState();
+    if (!token || !showName) return;
+
+    // Lazy import to avoid circular dep at module load time
+    const { useProgressStore } = await import('../store/useProgressStore');
+    const {
+        bangumiSearchSubject,
+        bangumiPostCollection: postCol,
+        bangumiGetSubjectCollection: getExisting,
+        GRIDTRAX_TO_BANGUMI: gtbMap,
+    } = await import('../api/bangumiService');
+
+    const recKey = `tmdb_tv_${tvId}_s${seasonNumber}`;
+
+    // Check fresh state — might have been populated by a concurrent sync
+    const rec = useProgressStore.getState().data.records[recKey];
+    if (!rec || rec.type !== 'tv_season') return;
+    const sr = rec as import('../types').SeasonRecord;
+    if (sr.bangumi_subject_id || sr.bangumi_scanned) return; // Already linked or already searched
+
+    try {
+        const results = await bangumiSearchSubject(showName, token);
+        const match = results[0];
+
+        if (!match) {
+            // Not on Bangumi at all — mark as scanned so we don't search again
+            useProgressStore.setState((s) => ({
+                data: {
+                    ...s.data,
+                    records: {
+                        ...s.data.records,
+                        [recKey]: { ...s.data.records[recKey], bangumi_scanned: true },
+                    },
+                },
+            }));
+            return;
+        }
+
+        // Cache the subject ID and mark scanned regardless of push outcome
+        useProgressStore.setState((s) => ({
+            data: {
+                ...s.data,
+                records: {
+                    ...s.data.records,
+                    [recKey]: {
+                        ...s.data.records[recKey],
+                        bangumi_subject_id: match.id,
+                        bangumi_scanned: true,
+                    },
+                },
+            },
+        }));
+
+        // Check if this subject is already in the user's Bangumi collection
+        const existing = await getExisting(token, match.id);
+
+        if (existing) {
+            // Subject already collected on Bangumi — do NOT overwrite Bangumi's status.
+            // The incremental sync will detect and resolve any conflict.
+            return;
+        }
+
+        // Subject is new to Bangumi — safe to push GridTrax status
+        await postCol(token, match.id, {
+            type: gtbMap[status],
+            rate: rating,
+        });
+    } catch {
+        // Silently fail — never interrupt the user's local flow
     }
 }
 

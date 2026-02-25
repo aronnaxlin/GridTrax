@@ -48,10 +48,10 @@ const EpisodeGrid: React.FC<EpisodeGridProps> = ({ tvId, seasonNumber, episodes,
 
     const handleWatchUpTo = useCallback(
         (episodeNumber: number) => {
-            watchUpToEpisode(tvId, seasonNumber, episodeNumber, episodes.length, metaPayload);
+            watchUpToEpisode(tvId, seasonNumber, episodeNumber, metaPayload);
             setSnackbar(`已标记第 1 ~ ${episodeNumber} 集为已看 ✓`);
         },
-        [tvId, seasonNumber, episodes.length, watchUpToEpisode, metaPayload]
+        [tvId, seasonNumber, watchUpToEpisode, metaPayload]
     );
 
     const handleCommentRequest = useCallback((episode: TMDBEpisode) => {

@@ -13,12 +13,33 @@ interface GlobalStatusPickerProps {
 
 const STATUSES: WatchStatus[] = ['Wish', 'Do', 'Collect', 'OnHold', 'Dropped'];
 
-const STATUS_EMOJI: Record<WatchStatus, string> = {
-    Wish: '🔖',
-    Do: '▶️',
-    Collect: '✅',
-    OnHold: '⏸️',
-    Dropped: '🗑️',
+// SVG icon components for each status (16×16 viewBox)
+export const StatusIcons: Record<WatchStatus, React.ReactElement> = {
+    Wish: (
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+            <path d="M17 3H7a2 2 0 0 0-2 2v16l7-3 7 3V5a2 2 0 0 0-2-2z" />
+        </svg>
+    ),
+    Do: (
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+            <path d="M8 5v14l11-7z" />
+        </svg>
+    ),
+    Collect: (
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+            <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z" />
+        </svg>
+    ),
+    OnHold: (
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+            <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z" />
+        </svg>
+    ),
+    Dropped: (
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+            <path d="M6 19c0 1.1.9 2 2 2h8a2 2 0 0 0 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z" />
+        </svg>
+    ),
 };
 
 const GlobalStatusPicker: React.FC<GlobalStatusPickerProps> = ({
@@ -60,6 +81,7 @@ const GlobalStatusPicker: React.FC<GlobalStatusPickerProps> = ({
                             borderRadius: '8px !important',
                             fontSize: '0.75rem',
                             fontWeight: 600,
+                            gap: 0.6,
                             color: status === s ? '#000' : 'text.secondary',
                             background: status === s ? primary : alpha(primary, 0.1),
                             '&.Mui-selected': {
@@ -73,7 +95,7 @@ const GlobalStatusPicker: React.FC<GlobalStatusPickerProps> = ({
                             transition: 'all 150ms ease',
                         }}
                     >
-                        {STATUS_EMOJI[s]} {STATUS_LABELS[s]}
+                        {StatusIcons[s]} {STATUS_LABELS[s]}
                     </ToggleButton>
                 ))}
             </ToggleButtonGroup>

@@ -25,6 +25,7 @@ const EpisodeCell: React.FC<EpisodeCellProps> = ({
     const [ripple, setRipple] = useState(false);
     const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
     const didLongPress = useRef(false);
+    const didContextMenu = useRef(false);
 
     const triggerRipple = useCallback(() => {
         setRipple(true);
@@ -33,9 +34,10 @@ const EpisodeCell: React.FC<EpisodeCellProps> = ({
 
     const handlePressStart = useCallback(
         (e: React.MouseEvent | React.TouchEvent) => {
-            // Prevent context menu default on right-click
+            // Right-click is handled by contextmenu, skip press tracking
             if ('button' in e && e.button === 2) return;
             didLongPress.current = false;
+            didContextMenu.current = false;
             setPressed(true);
             longPressTimer.current = setTimeout(() => {
                 didLongPress.current = true;
@@ -53,15 +55,18 @@ const EpisodeCell: React.FC<EpisodeCellProps> = ({
             longPressTimer.current = null;
         }
         setPressed(false);
-        if (!didLongPress.current) {
+        // Skip single-click if a long-press or right-click already handled it
+        if (!didLongPress.current && !didContextMenu.current) {
             triggerRipple();
             onSingleClick(episode.episode_number);
         }
+        didContextMenu.current = false;
     }, [episode.episode_number, onSingleClick, triggerRipple]);
 
     const handleContextMenu = useCallback(
         (e: React.MouseEvent) => {
             e.preventDefault();
+            didContextMenu.current = true;
             triggerRipple();
             onWatchUpTo(episode.episode_number);
         },

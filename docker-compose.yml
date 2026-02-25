@@ -1,0 +1,36 @@
+# ============================================================
+# GridTrax — Docker Compose
+# ============================================================
+# 用法:
+#   HTTP  模式: docker compose up -d --build
+#   HTTPS 模式: COMPOSE_PROFILES=ssl docker compose up -d --build
+# ============================================================
+
+services:
+  # ---- HTTP 模式（默认） ----
+  gridtrax:
+    build:
+      context: .
+      args:
+        VITE_TMDB_BEARER: ${VITE_TMDB_BEARER}
+        ENABLE_SSL: "false"
+    container_name: gridtrax
+    ports:
+      - "${GRIDTRAX_PORT:-721}:721"
+    restart: unless-stopped
+    profiles: [ "", "default" ]
+
+  # ---- HTTPS / SSL 模式 ----
+  gridtrax-ssl:
+    build:
+      context: .
+      args:
+        VITE_TMDB_BEARER: ${VITE_TMDB_BEARER}
+        ENABLE_SSL: "true"
+    container_name: gridtrax
+    ports:
+      - "${GRIDTRAX_PORT:-721}:721"
+    volumes:
+      - /etc/letsencrypt:/etc/letsencrypt:ro
+    restart: unless-stopped
+    profiles: [ "ssl" ]

@@ -5,17 +5,18 @@ node_modules/
 dist/
 
 # Env & Secrets
+# Secrets backend
 .env.local
 .env*.local
-tmdb_api_key
-tmdb_read_access_token
+.secrets/
 
 # Editor
 .vscode/
 .idea/
 
+# System
+.DS_Store
+Thumbs.db
+
 # Logs
 *.log
-
-gridtrax.tar.gz
-bangumi_developer_token

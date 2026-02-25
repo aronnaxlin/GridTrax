@@ -1,77 +1,83 @@
-#!/bin/bash
-
+#!/usr/bin/env bash
+# ============================================================
 # GridTrax 一键部署脚本
+# 用法:
+#   ./deploy.sh              # HTTP 模式 (默认)
+#   ./deploy.sh --ssl        # HTTPS 模式
+#   ./deploy.sh --port 8080  # 自定义端口
+# ============================================================
 
-set -e
+set -euo pipefail
 
-# 默认设置
-CONTAINER_NAME="gridtrax"
-IMAGE_NAME="gridtrax"
-PORT="0721"
+# ---------- 默认值 ----------
+SSL=false
+PORT=721
+ENV_FILE=".env.local"
 
-echo "🚀 开始 GridTrax 部署流程..."
+# ---------- 颜色 ----------
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+CYAN='\033[0;36m'
+NC='\033[0m'
 
-# 1. 检查环境变量
-if [ -f .env.local ]; then
-    echo "📄 发现 .env.local，尝试从文件中读取 TMDB TOKEN..."
-    BEARER=$(grep VITE_TMDB_BEARER .env.local | cut -d '=' -f2)
-fi
+log()  { echo -e "${CYAN}[GridTrax]${NC} $*"; }
+ok()   { echo -e "${GREEN}  ✔${NC} $*"; }
+warn() { echo -e "${YELLOW}  ⚠${NC} $*"; }
+err()  { echo -e "${RED}  ✖${NC} $*" >&2; }
 
-if [ -z "$BEARER" ]; then
-    read -p "❓ 未能从 .env.local 获取到 TOKEN，请输入 TMDB Bearer Token: " BEARER
-fi
+# ---------- 解析参数 ----------
+while [[ $# -gt 0 ]]; do
+  case $1 in
+    --ssl)  SSL=true; shift ;;
+    --port) PORT="$2"; shift 2 ;;
+    -h|--help)
+      echo "用法: $0 [--ssl] [--port <端口>]"
+      echo "  --ssl         启用 HTTPS 模式 (需要 Let's Encrypt 证书)"
+      echo "  --port <端口>  自定义主机端口 (默认: 721)"
+      exit 0 ;;
+    *) err "未知参数: $1"; exit 1 ;;
+  esac
+done
 
-if [ -z "$BEARER" ]; then
-    echo "❌ 错误: 必须提供 TMDB Token 才能构建。"
+# ---------- 检查依赖 ----------
+for cmd in docker; do
+  if ! command -v "$cmd" &>/dev/null; then
+    err "未找到 $cmd，请先安装。"
     exit 1
+  fi
+done
+
+# ---------- 读取 TMDB Token ----------
+if [[ -f "$ENV_FILE" ]]; then
+  VITE_TMDB_BEARER=$(grep -oP '(?<=VITE_TMDB_BEARER=).*' "$ENV_FILE" || true)
 fi
 
-# 2. 交互式选择 SSL
-read -p "🔒 是否开启 HTTPS (SSL)? (y/n, 默认 n): " ENABLE_SSL
-SSL_ARG="false"
-IMAGE_TAG="latest"
+if [[ -z "${VITE_TMDB_BEARER:-}" ]]; then
+  err "未找到 VITE_TMDB_BEARER。请在 .env.local 中配置。"
+  exit 1
+fi
 
-if [[ "$ENABLE_SSL" == "y" || "$ENABLE_SSL" == "Y" ]]; then
-    SSL_ARG="true"
-    IMAGE_TAG="ssl"
-    echo "✅ 已选择开启 SSL 模式。"
+export VITE_TMDB_BEARER
+export GRIDTRAX_PORT="$PORT"
+
+# ---------- 部署 ----------
+log "开始 GridTrax 部署..."
+log "模式: $(if $SSL; then echo 'HTTPS (SSL)'; else echo 'HTTP'; fi)"
+log "端口: $PORT"
+
+if $SSL; then
+  COMPOSE_PROFILES=ssl docker compose up -d --build
 else
-    echo "ℹ️ 已选择 HTTP 模式。"
+  docker compose up -d --build
 fi
 
-# 3. 停止并移除旧容器 (如果存在)
-if [ "$(docker ps -aq -f name=$CONTAINER_NAME)" ]; then
-    echo "🛑 发现同名容器，正在停止并移除..."
-    docker stop $CONTAINER_NAME > /dev/null
-    docker rm $CONTAINER_NAME > /dev/null
-fi
+ok "部署完成！"
 
-# 4. 构建镜像
-echo "🛠️ 正在构建 Docker 镜像 ($IMAGE_NAME:$IMAGE_TAG)..."
-docker build \
-    --build-arg VITE_TMDB_BEARER="$BEARER" \
-    --build-arg SSL="$SSL_ARG" \
-    -t "$IMAGE_NAME:$IMAGE_TAG" .
-
-# 5. 启动容器
-echo "🚢 正在启动容器..."
-if [[ "$SSL_ARG" == "true" ]]; then
-    # SSL 模式需要挂载证书
-    docker run -d \
-        --name "$CONTAINER_NAME" \
-        -p "$PORT:721" \
-        -v /etc/letsencrypt:/etc/letsencrypt \
-        --restart unless-stopped \
-        "$IMAGE_NAME:$IMAGE_TAG"
-    echo "✨ 部署成功！项目已运行在 https://你的域名:$PORT"
+if $SSL; then
+  ok "访问地址: https://localhost:$PORT (请将 localhost 替换为您的实际域名/IP)"
 else
-    # 普通 HTTP 模式
-    docker run -d \
-        --name "$CONTAINER_NAME" \
-        -p "$PORT:721" \
-        --restart unless-stopped \
-        "$IMAGE_NAME:$IMAGE_TAG"
-    echo "✨ 部署成功！项目已运行在 http://你的IP:$PORT"
+  ok "访问地址: http://localhost:$PORT"
 fi
 
-echo "📝 使用 'docker logs $CONTAINER_NAME' 查看运行日志。"
+log "查看日志: docker compose logs -f"

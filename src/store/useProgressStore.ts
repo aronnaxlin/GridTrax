@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { GRIDTRAX_TO_BANGUMI } from '../api/bangumiService';
-import { autoPushEpisodeToBangumi, autoPushToBangumi } from '../components/BangumiSyncPanel';
+import { autoLinkAndPushToBangumi, autoPushEpisodeToBangumi, autoPushToBangumi } from '../components/BangumiSyncPanel';
 import type {
     EpisodeRecord,
     MovieRecord,
@@ -16,7 +16,7 @@ interface ProgressState {
     // TV Season actions
     ensureSeasonRecord: (tvId: number, seasonNumber: number, meta?: { name?: string; show_name?: string; poster_path?: string; episode_count?: number }) => void;
     toggleEpisodeWatched: (tvId: number, seasonNumber: number, episodeNumber: number, meta?: { name?: string; show_name?: string; poster_path?: string; episode_count?: number }) => void;
-    watchUpToEpisode: (tvId: number, seasonNumber: number, episodeNumber: number, totalEpisodes: number, meta?: { name?: string; show_name?: string; poster_path?: string; episode_count?: number }) => void;
+    watchUpToEpisode: (tvId: number, seasonNumber: number, episodeNumber: number, meta?: { name?: string; show_name?: string; poster_path?: string; episode_count?: number }) => void;
     setEpisodeComment: (tvId: number, seasonNumber: number, episodeNumber: number, comment: string) => void;
     setSeasonStatus: (tvId: number, seasonNumber: number, status: WatchStatus, meta?: { name?: string; show_name?: string; poster_path?: string; episode_count?: number }) => void;
     setSeasonRating: (tvId: number, seasonNumber: number, rating: number) => void;
@@ -126,6 +126,7 @@ export const useProgressStore = create<ProgressState>()(
                                 ...state.data.records,
                                 [key]: {
                                     ...record,
+                                    last_interacted: Date.now(),
                                     episodes: {
                                         ...record.episodes,
                                         [epKey]: { ...current, watched: !current.watched },
@@ -136,18 +137,20 @@ export const useProgressStore = create<ProgressState>()(
                     };
                 });
                 // Determine new state after toggle and push to Bangumi
-                const newWatched = !((get().data.records[key] as SeasonRecord | undefined)?.episodes?.[String(episodeNumber)]?.watched ?? false);
-                void autoPushEpisodeToBangumi(tvId, seasonNumber, episodeNumber, !newWatched);
+                // Note: get() here returns the already-toggled state, so use it directly
+                const afterToggle = (get().data.records[key] as SeasonRecord | undefined)
+                    ?.episodes?.[String(episodeNumber)]?.watched ?? false;
+                void autoPushEpisodeToBangumi(tvId, seasonNumber, episodeNumber, afterToggle);
             },
 
-            watchUpToEpisode: (tvId, seasonNumber, episodeNumber, totalEpisodes, meta) => {
+            watchUpToEpisode: (tvId, seasonNumber, episodeNumber, meta) => {
                 const key = seasonKey(tvId, seasonNumber);
                 get().ensureSeasonRecord(tvId, seasonNumber, meta);
                 set((state) => {
                     const record = state.data.records[key] as SeasonRecord;
                     const updatedEpisodes = { ...record.episodes };
-                    // Mark all episodes from 1 to episodeNumber as watched
-                    for (let i = 1; i <= Math.min(episodeNumber, totalEpisodes); i++) {
+                    // Mark all episodes from 1 to episodeNumber (inclusive) as watched
+                    for (let i = 1; i <= episodeNumber; i++) {
                         const epKey = String(i);
                         updatedEpisodes[epKey] = {
                             ...(updatedEpisodes[epKey] ?? defaultEpisodeRecord()),
@@ -160,13 +163,13 @@ export const useProgressStore = create<ProgressState>()(
                             last_sync: Date.now(),
                             records: {
                                 ...state.data.records,
-                                [key]: { ...record, episodes: updatedEpisodes },
+                                [key]: { ...record, last_interacted: Date.now(), episodes: updatedEpisodes },
                             },
                         },
                     };
                 });
                 // Push all newly-watched episodes to Bangumi in the background
-                for (let i = 1; i <= Math.min(episodeNumber, totalEpisodes); i++) {
+                for (let i = 1; i <= episodeNumber; i++) {
                     void autoPushEpisodeToBangumi(tvId, seasonNumber, i, true);
                 }
             },
@@ -204,6 +207,7 @@ export const useProgressStore = create<ProgressState>()(
                             [key]: {
                                 ...(state.data.records[key] as SeasonRecord),
                                 global_status: status,
+                                last_interacted: Date.now(),
                                 // Always persist meta when explicitly setting status
                                 ...(meta ? {
                                     name: meta.name ?? (state.data.records[key] as SeasonRecord)?.name,
@@ -215,13 +219,20 @@ export const useProgressStore = create<ProgressState>()(
                         },
                     },
                 }));
-                // Auto-push to Bangumi (best-effort, async)
+                // Auto-push/auto-link to Bangumi (best-effort, async)
                 const rec = get().data.records[key] as SeasonRecord | undefined;
-                autoPushToBangumi(
-                    rec?.bangumi_subject_id,
-                    GRIDTRAX_TO_BANGUMI[status],
-                    rec?.rating ?? 0,
-                );
+                if (rec?.bangumi_subject_id) {
+                    // Already linked → just push the updated status
+                    autoPushToBangumi(
+                        rec.bangumi_subject_id,
+                        GRIDTRAX_TO_BANGUMI[status],
+                        rec.rating ?? 0,
+                    );
+                } else if (!rec?.bangumi_scanned) {
+                    // Not yet linked and not yet searched → try to find a match on Bangumi
+                    const showName = rec?.show_name || rec?.name;
+                    void autoLinkAndPushToBangumi(tvId, seasonNumber, showName, status, rec?.rating ?? 0);
+                }
             },
 
             setSeasonRating: (tvId, seasonNumber, rating) => {
@@ -232,7 +243,7 @@ export const useProgressStore = create<ProgressState>()(
                         ...state.data,
                         records: {
                             ...state.data.records,
-                            [key]: { ...(state.data.records[key] as SeasonRecord), rating },
+                            [key]: { ...(state.data.records[key] as SeasonRecord), rating, last_interacted: Date.now() },
                         },
                     },
                 }));
@@ -300,7 +311,7 @@ export const useProgressStore = create<ProgressState>()(
                         ...state.data,
                         records: {
                             ...state.data.records,
-                            [key]: { ...(state.data.records[key] as MovieRecord), global_status: status },
+                            [key]: { ...(state.data.records[key] as MovieRecord), global_status: status, last_interacted: Date.now() },
                         },
                     },
                 }));
@@ -314,7 +325,7 @@ export const useProgressStore = create<ProgressState>()(
                         ...state.data,
                         records: {
                             ...state.data.records,
-                            [key]: { ...(state.data.records[key] as MovieRecord), rating },
+                            [key]: { ...(state.data.records[key] as MovieRecord), rating, last_interacted: Date.now() },
                         },
                     },
                 }));
