@@ -165,7 +165,7 @@ export async function bangumiPostCollection(
     }
 }
 
-/** PUT /v0/users/-/collections/{subject_id}/episodes — set episode watch states */
+/** PATCH /v0/users/-/collections/{subject_id}/episodes — set episode watch states */
 export async function bangumiPutEpisodes(
     token: string,
     subject_id: number,
@@ -173,7 +173,7 @@ export async function bangumiPutEpisodes(
     type: 0 | 2, // 0=未看, 2=看过
 ): Promise<void> {
     const res = await fetch(`${BGM_BASE}/v0/users/-/collections/${subject_id}/episodes`, {
-        method: 'PUT',
+        method: 'PATCH',
         headers: makeHeaders(token),
         body: JSON.stringify({ episode_id: episode_ids, type }),
     });
@@ -187,9 +187,39 @@ export async function bangumiGetEpisodes(
     subject_id: number,
 ): Promise<{ id: number; sort: number; ep: number; type: number }[]> {
     const res = await fetch(`${BGM_BASE}/v0/episodes?subject_id=${subject_id}&type=0&limit=200`, {
-        headers: { 'User-Agent': 'GridTrax/1.0' },
+        headers: { 'User-Agent': 'GridTrax/1.0 (https://github.com/your/repo)' },
     });
     if (!res.ok) return [];
     const data = await res.json() as { data: { id: number; sort: number; ep: number; type: number }[] };
     return data.data ?? [];
+}
+
+/**
+ * GET /v0/users/-/collections/{subject_id}/episodes
+ * Returns user's episode watch states for a subject.
+ * episode.type: 0=未收藏, 1=想看, 2=看过, 3=抛弃
+ */
+export async function bangumiGetUserEpisodes(
+    token: string,
+    subject_id: number,
+): Promise<{ episode: { id: number; sort: number; type: number }; type: number }[]> {
+    const results: { episode: { id: number; sort: number; type: number }; type: number }[] = [];
+    let offset = 0;
+    const limit = 100;
+    while (true) {
+        const res = await fetch(
+            `${BGM_BASE}/v0/users/-/collections/${subject_id}/episodes?episode_type=0&limit=${limit}&offset=${offset}`,
+            { headers: makeHeaders(token) }
+        );
+        if (!res.ok) break;
+        const data = await res.json() as {
+            data: { episode: { id: number; sort: number; type: number }; type: number }[];
+            total: number;
+        };
+        const items = data.data ?? [];
+        results.push(...items);
+        if (results.length >= data.total || items.length < limit) break;
+        offset += limit;
+    }
+    return results;
 }

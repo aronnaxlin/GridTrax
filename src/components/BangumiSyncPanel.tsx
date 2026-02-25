@@ -30,8 +30,11 @@ import {
     BANGUMI_TO_GRIDTRAX,
     GRIDTRAX_TO_BANGUMI,
     bangumiGetCollections,
+    bangumiGetEpisodes,
     bangumiGetMe,
+    bangumiGetUserEpisodes,
     bangumiPostCollection,
+    bangumiPutEpisodes,
     bangumiSearchSubject,
     type BangumiCollectionType
 } from '../api/bangumiService';
@@ -57,7 +60,54 @@ interface LogEntry {
     detail: string;
 }
 
-// ── Conflict dialog ───────────────────────────────────────────────────────────
+// ── Episode conflict dialog ──────────────────────────────────────────────────
+
+interface EpisodeConflictItem {
+    key: string;
+    showName: string;
+    localWatched: number[];
+    remoteWatched: number[];
+    tmdbId: number;
+    seasonNumber: number;
+    bangumiSubjectId: number;
+}
+
+const EpisodeConflictDialog: React.FC<{
+    conflicts: EpisodeConflictItem[];
+    open: boolean;
+    onResolve: (pref: 'local' | 'remote') => void;
+}> = ({ conflicts, open, onResolve }) => (
+    <Dialog open={open} maxWidth="sm" fullWidth PaperProps={{ sx: { borderRadius: 3 } }}>
+        <DialogTitle fontWeight={700}>集数同步冲突</DialogTitle>
+        <DialogContent>
+            <Typography variant="body2" color="text.secondary" gutterBottom>
+                以下 {conflicts.length} 个条目的集数进度在 GridTrax 和 Bangumi 之间不一致，请选择以哪一方为准：
+            </Typography>
+            <Box sx={{ mt: 1, maxHeight: 260, overflow: 'auto' }}>
+                {conflicts.slice(0, 15).map((c) => (
+                    <Box key={c.key} sx={{ py: 0.75, borderBottom: '1px solid', borderColor: 'divider' }}>
+                        <Typography variant="caption" fontWeight={600}>{c.showName}</Typography>
+                        <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 0.25 }}>
+                            <Typography variant="caption" color="primary">
+                                GridTrax: 已看 {c.localWatched.length} 集
+                            </Typography>
+                            <Typography variant="caption" color="text.secondary">
+                                Bangumi: 已看 {c.remoteWatched.length} 集
+                            </Typography>
+                        </Box>
+                    </Box>
+                ))}
+            </Box>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+            <Button onClick={() => onResolve('local')} variant="outlined" sx={{ borderRadius: 2 }}>以 GridTrax 为准 → 写入 Bangumi</Button>
+            <Button onClick={() => onResolve('remote')} variant="contained" sx={{ borderRadius: 2 }}>以 Bangumi 为准 → 写入 GridTrax</Button>
+        </DialogActions>
+    </Dialog>
+);
+
+
+// ── Status conflict dialog ────────────────────────────────────────────────
 
 interface ConflictItem { key: string; localStatus: string; remoteStatus: string }
 
@@ -113,10 +163,15 @@ const BangumiSyncPanel: React.FC = () => {
     const [log, setLog] = useState<LogEntry[]>([]);
     const [summary, setSummary] = useState<{ matched: number; skipped: number; total: number } | null>(null);
 
-    // Conflict resolution
+    // Conflict resolution — status
     const [conflicts, setConflicts] = useState<ConflictItem[]>([]);
     const [conflictOpen, setConflictOpen] = useState(false);
     const [resolver, setResolver] = useState<null | ((pref: 'local' | 'remote') => void)>(null);
+
+    // Conflict resolution — episodes
+    const [epConflicts, setEpConflicts] = useState<EpisodeConflictItem[]>([]);
+    const [epConflictOpen, setEpConflictOpen] = useState(false);
+    const [epResolver, setEpResolver] = useState<null | ((pref: 'local' | 'remote') => void)>(null);
 
     const isConfigured = !!(token && username);
 
@@ -168,7 +223,34 @@ const BangumiSyncPanel: React.FC = () => {
                     const rec = store.data.records[cachedKey] as SeasonRecord;
                     store.setSeasonStatus(rec.tmdb_id, rec.season_number, BANGUMI_TO_GRIDTRAX[col.type]);
                     if (col.rate > 0) store.setSeasonRating(rec.tmdb_id, rec.season_number, col.rate);
-                    addLog({ name: displayName, success: true, detail: `已缓存 → ${BANGUMI_TO_GRIDTRAX[col.type]}` });
+
+                    // Also import episode progress for cached items
+                    try {
+                        const userEps = await bangumiGetUserEpisodes(token, col.subject_id);
+                        const watchedSorts = new Set<number>(
+                            userEps
+                                .filter((e: { type: number }) => e.type === 2)
+                                .map((e: { episode: { sort: number } }) => Math.round(e.episode.sort))
+                        );
+                        if (watchedSorts.size > 0) {
+                            const curStore = useProgressStore.getState();
+                            const epCount = col.ep_status || watchedSorts.size;
+                            for (const ep of watchedSorts) {
+                                const existing = rec.episodes?.[String(ep)];
+                                if (!existing?.watched) {
+                                    curStore.toggleEpisodeWatched(rec.tmdb_id, rec.season_number, ep, {
+                                        show_name: rec.show_name,
+                                        episode_count: epCount,
+                                    });
+                                }
+                            }
+                            addLog({ name: displayName, success: true, detail: `已缓存 → ${BANGUMI_TO_GRIDTRAX[col.type]} · 已看 ${watchedSorts.size} 集` });
+                        } else {
+                            addLog({ name: displayName, success: true, detail: `已缓存 → ${BANGUMI_TO_GRIDTRAX[col.type]}` });
+                        }
+                    } catch {
+                        addLog({ name: displayName, success: true, detail: `已缓存 → ${BANGUMI_TO_GRIDTRAX[col.type]}` });
+                    }
                     matched++;
                     continue;
                 }
@@ -196,19 +278,55 @@ const BangumiSyncPanel: React.FC = () => {
                 });
                 if (col.rate > 0) store.setSeasonRating(tmdbId, 1, col.rate);
 
-                // Cache bangumi_subject_id
+                // Cache bangumi_subject_id and bangumi_scanned
                 const recKey = `tmdb_tv_${tmdbId}_s1`;
                 useProgressStore.setState((s) => ({
                     data: {
                         ...s.data,
                         records: {
                             ...s.data.records,
-                            [recKey]: { ...s.data.records[recKey], bangumi_subject_id: col.subject_id } as SeasonRecord,
+                            [recKey]: {
+                                ...s.data.records[recKey],
+                                bangumi_subject_id: col.subject_id,
+                                bangumi_scanned: true,
+                            } as SeasonRecord,
                         },
                     },
                 }));
 
-                addLog({ name: displayName, success: true, detail: `→ ${tmdbMatch.name} [TMDB ${tmdbId}] · ${gridtraxStatus}` });
+                // ── Import episode progress from Bangumi ───────────────────────
+                try {
+                    const userEps = await bangumiGetUserEpisodes(token, col.subject_id);
+                    const watchedSorts = new Set<number>(
+                        userEps
+                            .filter((e: { type: number }) => e.type === 2) // type 2 = 看过
+                            .map((e: { episode: { sort: number } }) => Math.round(e.episode.sort))
+                    );
+
+                    if (watchedSorts.size > 0) {
+                        const currentStore = useProgressStore.getState();
+                        const episodeCount = col.ep_status || watchedSorts.size;
+                        const maxSorted = Math.max(...Array.from(watchedSorts));
+                        const recKey2 = `tmdb_tv_${tmdbId}_s1`;
+                        for (let ep = 1; ep <= maxSorted; ep++) {
+                            if (watchedSorts.has(ep)) {
+                                // Only toggle if not already watched (avoid double-toggle on re-import)
+                                const existing = (currentStore.data.records[recKey2] as SeasonRecord | undefined)?.episodes?.[String(ep)];
+                                if (!existing?.watched) {
+                                    currentStore.toggleEpisodeWatched(tmdbId, 1, ep, {
+                                        show_name: tmdbMatch.name,
+                                        episode_count: episodeCount,
+                                    });
+                                }
+                            }
+                        }
+                        addLog({ name: displayName, success: true, detail: `→ ${tmdbMatch.name} [TMDB ${tmdbId}] · ${gridtraxStatus} · 已看 ${watchedSorts.size} 集` });
+                    } else {
+                        addLog({ name: displayName, success: true, detail: `→ ${tmdbMatch.name} [TMDB ${tmdbId}] · ${gridtraxStatus}` });
+                    }
+                } catch {
+                    addLog({ name: displayName, success: true, detail: `→ ${tmdbMatch.name} [TMDB ${tmdbId}] · ${gridtraxStatus} (集数导入失败)` });
+                }
                 matched++;
                 await new Promise((r) => setTimeout(r, 250));
             }
@@ -415,18 +533,135 @@ const BangumiSyncPanel: React.FC = () => {
             } else {
                 setSyncMessage('无冲突，推送本地进度到 Bangumi…');
                 let synced = 0;
+
+                // ── Detect episode conflicts first ─────────────────────────────
+                const detectedEpConflicts: EpisodeConflictItem[] = [];
+                const epDataMap = new Map<number, {
+                    localWatched: number[];
+                    remoteWatched: number[];
+                    epIds: Record<string, number>;
+                }>();
+
                 for (const rec of Object.values(refreshed.data.records)) {
                     if (rec.type !== 'tv_season') continue;
                     const sr = rec as SeasonRecord;
                     if (!sr.bangumi_subject_id || !sr.global_status) continue;
-                    const alreadyPushed = bgmMap.has(sr.bangumi_subject_id) &&
+                    const alreadyPushedInPass1 = bgmMap.has(sr.bangumi_subject_id) &&
                         newPushed > 0 &&
                         unlinked.some(([, r]) => (r as SeasonRecord).tmdb_id === sr.tmdb_id);
-                    if (alreadyPushed) continue; // already pushed in pass 1
-                    await bangumiPostCollection(token, sr.bangumi_subject_id, { type: GRIDTRAX_TO_BANGUMI[sr.global_status], rate: sr.rating });
-                    addLog({ name: sr.show_name || `TV ${sr.tmdb_id}`, success: true, detail: `推送 · ${sr.global_status}` });
+                    if (alreadyPushedInPass1) continue;
+
+                    // Push collection status
+                    await bangumiPostCollection(token, sr.bangumi_subject_id, {
+                        type: GRIDTRAX_TO_BANGUMI[sr.global_status],
+                        rate: sr.rating,
+                    });
                     synced++;
+
+                    const localWatched = Object.entries(sr.episodes)
+                        .filter(([, ep]) => ep.watched)
+                        .map(([num]) => Number(num))
+                        .sort((a, b) => a - b);
+
+                    if (localWatched.length > 0 || true /* always check for remote progress */) {
+                        try {
+                            let epIds = sr.bangumi_episode_ids;
+                            if (!epIds) {
+                                const epList = await bangumiGetEpisodes(sr.bangumi_subject_id);
+                                epIds = Object.fromEntries(
+                                    epList.map((ep: { sort: number; id: number }) => [String(Math.round(ep.sort)), ep.id])
+                                );
+                            }
+                            const remoteEps = await bangumiGetUserEpisodes(token, sr.bangumi_subject_id);
+                            const remoteWatched = remoteEps
+                                .filter((e) => e.type === 2)
+                                .map((e) => Math.round(e.episode.sort))
+                                .sort((a, b) => a - b);
+
+                            const localSet = new Set(localWatched);
+                            const remoteSet = new Set(remoteWatched);
+                            const hasConflict = localWatched.length !== remoteWatched.length ||
+                                localWatched.some((n) => !remoteSet.has(n)) ||
+                                remoteWatched.some((n) => !localSet.has(n));
+
+                            if (hasConflict && (localWatched.length > 0 || remoteWatched.length > 0)) {
+                                detectedEpConflicts.push({
+                                    key: `${sr.tmdb_id}_${sr.season_number}`,
+                                    showName: sr.show_name || `TV ${sr.tmdb_id}`,
+                                    localWatched,
+                                    remoteWatched,
+                                    tmdbId: sr.tmdb_id,
+                                    seasonNumber: sr.season_number,
+                                    bangumiSubjectId: sr.bangumi_subject_id,
+                                });
+                            }
+                            epDataMap.set(sr.bangumi_subject_id, { localWatched, remoteWatched, epIds });
+                        } catch {
+                            // Skip per-show episode check errors
+                        }
+                    }
                 }
+
+                // ── Resolve episode conflicts ──────────────────────────────────
+                let epPref: 'local' | 'remote' = 'local';
+                if (detectedEpConflicts.length > 0) {
+                    setEpConflicts(detectedEpConflicts);
+                    setSyncMessage('');
+                    epPref = await new Promise<'local' | 'remote'>((resolve) => {
+                        setEpResolver(() => resolve);
+                        setEpConflictOpen(true);
+                    });
+                    setEpConflictOpen(false);
+                    setEpResolver(null);
+                }
+
+                // ── Apply resolutions ──────────────────────────────────────────
+                for (const conflict of detectedEpConflicts) {
+                    const epData = epDataMap.get(conflict.bangumiSubjectId);
+                    if (!epData) continue;
+
+                    if (epPref === 'local') {
+                        // GridTrax → Bangumi
+                        const bgmEpIds = conflict.localWatched
+                            .map((n) => epData.epIds[String(n)])
+                            .filter(Boolean) as number[];
+                        if (bgmEpIds.length > 0) {
+                            try { await bangumiPutEpisodes(token, conflict.bangumiSubjectId, bgmEpIds, 2); } catch { /* ignore */ }
+                        }
+                        addLog({ name: conflict.showName, success: true, detail: `集数 GridTrax→Bangumi · ${bgmEpIds.length} 集` });
+                    } else {
+                        // Bangumi → GridTrax
+                        const currentStore = useProgressStore.getState();
+                        const remoteSet = new Set(conflict.remoteWatched);
+                        const localSet = new Set(conflict.localWatched);
+                        for (const ep of conflict.remoteWatched) {
+                            if (!localSet.has(ep)) currentStore.toggleEpisodeWatched(conflict.tmdbId, conflict.seasonNumber, ep);
+                        }
+                        for (const ep of conflict.localWatched) {
+                            if (!remoteSet.has(ep)) currentStore.toggleEpisodeWatched(conflict.tmdbId, conflict.seasonNumber, ep);
+                        }
+                        addLog({ name: conflict.showName, success: true, detail: `集数 Bangumi→GridTrax · ${conflict.remoteWatched.length} 集` });
+                    }
+                }
+
+                // ── Push non-conflicting episode progress ──────────────────────
+                for (const [subjectId, epData] of epDataMap.entries()) {
+                    const isConflicted = detectedEpConflicts.some((c) => c.bangumiSubjectId === subjectId);
+                    if (isConflicted) continue;
+                    if (epData.localWatched.length === 0) continue;
+                    const bgmEpIds = epData.localWatched
+                        .map((n) => epData.epIds[String(n)])
+                        .filter(Boolean) as number[];
+                    if (bgmEpIds.length > 0) {
+                        try { await bangumiPutEpisodes(token, subjectId, bgmEpIds, 2); } catch { /* ignore */ }
+                        // Find the show name for logging
+                        const showName = Object.values(refreshed.data.records).find(
+                            (r) => r.type === 'tv_season' && (r as SeasonRecord).bangumi_subject_id === subjectId
+                        ) as SeasonRecord | undefined;
+                        addLog({ name: showName?.show_name || `Subject ${subjectId}`, success: true, detail: `推送 ${bgmEpIds.length} 集` });
+                    }
+                }
+
                 setSummary({ matched: newPushed + synced, skipped, total: unlinked.length + synced });
                 setSyncMessage('');
             }
@@ -705,6 +940,11 @@ const BangumiSyncPanel: React.FC = () => {
                 conflicts={conflicts}
                 open={conflictOpen}
                 onResolve={(pref) => resolver?.(pref)}
+            />
+            <EpisodeConflictDialog
+                conflicts={epConflicts}
+                open={epConflictOpen}
+                onResolve={(pref) => epResolver?.(pref)}
             />
         </>
     );

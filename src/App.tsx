@@ -2,6 +2,7 @@ import { Box, CircularProgress, CssBaseline, ThemeProvider } from '@mui/material
 import React, { Suspense, useMemo } from 'react';
 import { BrowserRouter, Route, Routes } from 'react-router-dom';
 import Layout from './components/Layout';
+import { useAutoWebDAVSync } from './hooks/useAutoWebDAVSync';
 import { useThemeStore } from './store/useThemeStore';
 import { createAppTheme } from './theme/theme';
 
@@ -18,6 +19,7 @@ const LoadingFallback = () => (
 
 const App: React.FC = () => {
   const { getActiveThemeConfig, themeId } = useThemeStore();
+  useAutoWebDAVSync();
 
   const theme = useMemo(() => {
     return createAppTheme(getActiveThemeConfig(), 'dark');
