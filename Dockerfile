@@ -14,7 +14,8 @@ RUN npm ci --ignore-scripts
 # 2) 复制源码并构建
 COPY . .
 
-ARG VITE_TMDB_BEARER
+# 使用固定占位符构建，以便运行时通过 entrypoint.sh 替换
+ARG VITE_TMDB_BEARER=PLACEHOLDER_TMDB_BEARER
 ENV VITE_TMDB_BEARER=${VITE_TMDB_BEARER}
 
 RUN npm run build
@@ -28,6 +29,10 @@ COPY --from=build /app/dist /usr/share/nginx/html
 # 复制两套 nginx 配置
 COPY deploy/nginx/http.conf /etc/nginx/templates/nginx-http.conf
 COPY deploy/nginx/ssl.conf  /etc/nginx/templates/nginx-ssl.conf
+
+# 复制入口脚本并赋予执行权限
+COPY deploy/docker/entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
 
 # 根据 ENABLE_SSL build-arg 决定使用哪套配置
 ARG ENABLE_SSL=false
@@ -44,4 +49,5 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
 
 EXPOSE 721
 
+ENTRYPOINT ["/entrypoint.sh"]
 CMD ["nginx", "-g", "daemon off;"]

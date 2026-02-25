@@ -6,7 +6,7 @@
 
 ## 🌟 项目动机
 
-**GridTrax** 的核心灵感来源于广受好评的国内动漫二次元社区 [**Bangumi (番组计划)**](https://bgm.tv/)。
+**GridTrax** 的核心灵感来源于广受好评的动漫二次元社区 [**Bangumi (番组计划)**](https://bgm.tv/)。
 
 本项目作为一个轻量级的个人练习与自用工具，旨在探索一种不同的 UI 呈现方式与数据存储模式：
 1. **网格系统 (Grid View)**：对于包含多季内容或数十集的剧集/动漫，尝试用直观的方块网格来分别呈现每一集的独立状态，像打卡一样记录单集看番进度。
@@ -58,14 +58,53 @@
 docker compose --env-file .env.local up -d --build
 
 # HTTPS 模式 (需要 Let's Encrypt 证书)
-COMPOSE_PROFILES=ssl docker compose --env-file .env.local up -d --build
+### 🐳 Docker 部署 (推荐)
 
-# 自定义端口
-GRIDTRAX_PORT=8080 docker compose --env-file .env.local up -d --build
+项目已针对 Docker 进行优化，支持一键部署到云服务器、群晖 NAS 等。镜像中**不包含**任何私密 Token，所有配置均在运行时动态注入。
+
+#### 1. 使用 Docker Compose (最简单)
+
+下载 `docker-compose.yml` 并运行：
+
+```yaml
+services:
+  gridtrax:
+    image: <your-username>/gridtrax:latest
+    container_name: gridtrax
+    ports:
+      - "721:721"
+    environment:
+      # 方式 A：直接指定环境变量 (推荐)
+      - VITE_TMDB_BEARER=您的_TMDB_V4_TOKEN
+    volumes:
+      # 方式 B：通过挂载的方式读取本地的 .env.local 文件
+      - ./.env.local:/app/.env.local:ro
+    restart: always
 ```
 
-> `docker-compose.yml` 会自动从 `.env.local` 读取 `VITE_TMDB_BEARER`。默认端口 **721**。
+直接启动：
+```bash
+docker compose up -d
+```
 
+> [!TIP]
+> **方式 C**：你也可以在部署时不提供任何 Token，直接在网页登录后的【同步设置】中填入 Token，点击保存即可实时生效。
+
+#### 2. 自行构建并推送到 Docker Hub
+
+如果你修改了代码并想分发自己的镜像：
+
+```bash
+# 构建镜像 (自动包含运行时注入逻辑)
+docker build -t <your-username>/gridtrax:latest .
+
+# 推送
+docker login
+docker push <your-username>/gridtrax:latest
+```
+
+> [!NOTE]
+> **关于安全性**：项目使用“占位符替换”技术。构建镜像时，代码中的 Token 会被设为占位符。当容器启动时，`entrypoint.sh` 脚本会自动将占位符替换为运行时提供的环境变量或 `.env.local` 内容。这确保了你可以放心地将镜像上传到公共仓库。
 ---
 
 ### 方式二：一键脚本部署
