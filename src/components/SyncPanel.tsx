@@ -29,6 +29,7 @@ import {
 import { alpha, keyframes } from '@mui/material/styles';
 import React, { useRef, useState } from 'react';
 import { mergeProgressData, webdavDownload, webdavUpload } from '../api/webdavService';
+import { useBangumiStore } from '../store/useBangumiStore';
 import { useProgressStore } from '../store/useProgressStore';
 import type { WebDAVConfig } from '../store/useWebDAVStore';
 import { useWebDAVStore } from '../store/useWebDAVStore';
@@ -185,8 +186,23 @@ const SyncPanel: React.FC = () => {
     // ── JSON actions ──────────────────────────────────────────────────────────
     const handleJsonExport = () => {
         try {
+            const bangumiState = useBangumiStore.getState();
+            const exportData = {
+                metadata: {
+                    version: 2,
+                    exported_at: new Date().toISOString(),
+                },
+                progressData: { ...progressData, last_sync: Date.now() },
+                bangumi: {
+                    token: bangumiState.token,
+                    username: bangumiState.username,
+                    userId: bangumiState.userId,
+                    nickname: bangumiState.nickname,
+                    lastSyncAt: bangumiState.lastSyncAt,
+                }
+            };
             const blob = new Blob(
-                [JSON.stringify({ ...progressData, last_sync: Date.now() }, null, 2)],
+                [JSON.stringify(exportData, null, 2)],
                 { type: 'application/json' }
             );
             const a = document.createElement('a');
@@ -206,10 +222,28 @@ const SyncPanel: React.FC = () => {
         const reader = new FileReader();
         reader.onload = (ev) => {
             try {
-                const parsed = JSON.parse(ev.target?.result as string) as ProgressData;
-                if (!parsed?.records) throw new Error('文件格式不正确，缺少 records 字段。');
-                useProgressStore.setState((s) => ({ ...s, data: parsed }));
-                setJsonStatus({ type: 'success', message: `已成功导入 ${Object.keys(parsed.records).length} 条记录。` });
+                const parsed = JSON.parse(ev.target?.result as string);
+                let incomingProgress: ProgressData;
+
+                if (parsed.metadata?.version === 2 && parsed.progressData) {
+                    incomingProgress = parsed.progressData;
+                    if (parsed.bangumi) {
+                        useBangumiStore.setState({
+                            token: parsed.bangumi.token || '',
+                            username: parsed.bangumi.username || '',
+                            userId: parsed.bangumi.userId || null,
+                            nickname: parsed.bangumi.nickname || '',
+                            lastSyncAt: parsed.bangumi.lastSyncAt || null,
+                        });
+                    }
+                } else {
+                    incomingProgress = parsed as ProgressData;
+                }
+
+                if (!incomingProgress?.records) throw new Error('文件格式不正确，缺少 records 字段。');
+
+                useProgressStore.setState((s) => ({ ...s, data: incomingProgress }));
+                setJsonStatus({ type: 'success', message: `已成功导入 ${Object.keys(incomingProgress.records).length} 条记录。` });
             } catch (err) {
                 setJsonStatus({ type: 'error', message: (err as Error).message });
             }
