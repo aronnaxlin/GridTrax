@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { GRIDTRAX_TO_BANGUMI } from '../api/bangumiService';
-import { autoPushToBangumi } from '../components/BangumiSyncPanel';
+import { autoPushEpisodeToBangumi, autoPushToBangumi } from '../components/BangumiSyncPanel';
 import type {
     EpisodeRecord,
     MovieRecord,
@@ -135,6 +135,9 @@ export const useProgressStore = create<ProgressState>()(
                         },
                     };
                 });
+                // Determine new state after toggle and push to Bangumi
+                const newWatched = !((get().data.records[key] as SeasonRecord | undefined)?.episodes?.[String(episodeNumber)]?.watched ?? false);
+                void autoPushEpisodeToBangumi(tvId, seasonNumber, episodeNumber, !newWatched);
             },
 
             watchUpToEpisode: (tvId, seasonNumber, episodeNumber, totalEpisodes, meta) => {
@@ -162,6 +165,10 @@ export const useProgressStore = create<ProgressState>()(
                         },
                     };
                 });
+                // Push all newly-watched episodes to Bangumi in the background
+                for (let i = 1; i <= Math.min(episodeNumber, totalEpisodes); i++) {
+                    void autoPushEpisodeToBangumi(tvId, seasonNumber, i, true);
+                }
             },
 
             setEpisodeComment: (tvId, seasonNumber, episodeNumber, comment) => {

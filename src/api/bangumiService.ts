@@ -109,21 +109,30 @@ export async function bangumiGetCollections(
     return results;
 }
 
-/** POST /v0/search/subjects — search anime by name */
+/** POST /v0/search/subjects — search anime by name.
+ *  Throws on API errors (auth, network). Returns [] only for genuine empty results. */
 export async function bangumiSearchSubject(
     name: string,
+    token?: string,
 ): Promise<BangumiSearchResult[]> {
+    const headers: HeadersInit = {
+        'Content-Type': 'application/json',
+        'User-Agent': 'GridTrax/1.0 (https://github.com/your/repo)',
+    };
+    if (token) headers['Authorization'] = `Bearer ${token}`;
     const res = await fetch(`${BGM_BASE}/v0/search/subjects?limit=5`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'User-Agent': 'GridTrax/1.0' },
+        headers,
         body: JSON.stringify({ keyword: name, filter: { type: [2] } }),
     });
-    if (!res.ok) return [];
+    if (!res.ok) {
+        throw new Error(`Bangumi 搜索失败 (${res.status} ${res.statusText})`);
+    }
     const data = await res.json() as { data: BangumiSearchResult[] };
     return data.data ?? [];
 }
 
-/** PATCH /v0/users/-/collections/{subject_id} — update collection status + rating */
+/** PATCH /v0/users/-/collections/{subject_id} — update existing collection entry */
 export async function bangumiPatchCollection(
     token: string,
     subject_id: number,
@@ -136,6 +145,23 @@ export async function bangumiPatchCollection(
     });
     if (!res.ok && res.status !== 204) {
         throw new Error(`同步到 Bangumi 失败 (${res.status})`);
+    }
+}
+
+/** POST /v0/users/-/collections/{subject_id} — create or update (upsert) a collection entry.
+ *  Unlike PATCH, this will create the entry if it does not exist. */
+export async function bangumiPostCollection(
+    token: string,
+    subject_id: number,
+    payload: { type?: BangumiCollectionType; rate?: number; comment?: string },
+): Promise<void> {
+    const res = await fetch(`${BGM_BASE}/v0/users/-/collections/${subject_id}`, {
+        method: 'POST',
+        headers: makeHeaders(token),
+        body: JSON.stringify(payload),
+    });
+    if (!res.ok && res.status !== 204) {
+        throw new Error(`新建 Bangumi 收藏失败 (${res.status})`);
     }
 }
 

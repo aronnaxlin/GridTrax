@@ -92,6 +92,9 @@ export interface SeasonRecord {
   poster_path?: string;
   episode_count?: number;
   bangumi_subject_id?: number;
+  bangumi_episode_ids?: Record<string, number>; // sort_number → bangumi_episode_id
+  /** true = already searched Bangumi; false/undefined = new, not yet scanned */
+  bangumi_scanned?: boolean;
   global_status?: WatchStatus;
   rating: number; // 0-10
   global_comment: string;

@@ -31,8 +31,9 @@ import {
     GRIDTRAX_TO_BANGUMI,
     bangumiGetCollections,
     bangumiGetMe,
-    bangumiPatchCollection,
-    type BangumiCollectionType,
+    bangumiPostCollection,
+    bangumiSearchSubject,
+    type BangumiCollectionType
 } from '../api/bangumiService';
 import { searchTV } from '../api/tmdb';
 import { useBangumiStore } from '../store/useBangumiStore';
@@ -236,8 +237,140 @@ const BangumiSyncPanel: React.FC = () => {
             const bgmMap = new Map(collections.map((c) => [c.subject_id, c]));
             const store = useProgressStore.getState();
             const detectedConflicts: ConflictItem[] = [];
+            let newPushed = 0;
+            let skipped = 0;
 
-            for (const [key, rec] of Object.entries(store.data.records)) {
+            // ── Diagnostics ──────────────────────────────────────────────────
+            const allEntries = Object.entries(store.data.records);
+            const tvSeasons = allEntries.filter(([, r]) => r.type === 'tv_season');
+            const withSubjectId = tvSeasons.filter(([, r]) => (r as SeasonRecord).bangumi_subject_id);
+            const withScanned = tvSeasons.filter(([, r]) => (r as SeasonRecord).bangumi_scanned);
+            const withStatus = tvSeasons.filter(([, r]) => (r as SeasonRecord).global_status);
+            const candidatesBeforeReset = tvSeasons.filter(([, r]) => {
+                const sr = r as SeasonRecord;
+                return !sr.bangumi_subject_id && !sr.bangumi_scanned && sr.global_status;
+            });
+            addLog({ name: '🔍 诊断', success: true, detail: `总记录 ${allEntries.length} · TV ${tvSeasons.length} · 有subject_id ${withSubjectId.length} · 已扫描 ${withScanned.length} · 有状态 ${withStatus.length} · 候选(重置前) ${candidatesBeforeReset.length}` });
+
+            // ── Pass 0: Reset false positives from previous buggy scans ────
+            const allRecords = { ...store.data.records };
+            let resetCount = 0;
+            for (const [key, rec] of Object.entries(allRecords)) {
+                if (rec.type === 'tv_season') {
+                    const sr = rec as SeasonRecord;
+                    if (sr.bangumi_scanned && !sr.bangumi_subject_id) {
+                        allRecords[key] = { ...sr, bangumi_scanned: false };
+                        resetCount++;
+                    }
+                }
+            }
+            if (resetCount > 0) {
+                useProgressStore.setState((s) => ({
+                    data: { ...s.data, records: allRecords },
+                }));
+                addLog({ name: '🔄 重置', success: true, detail: `已重置 ${resetCount} 条误标记条目` });
+            }
+
+            // ── Pass 1: Link & push unlinked records ─────────────────────────
+            const storeAfterReset = useProgressStore.getState();
+            setSyncMessage('正在处理本地新增条目…');
+            const unlinked = Object.entries(storeAfterReset.data.records).filter(
+                ([, rec]) => rec.type === 'tv_season'
+                    && !(rec as SeasonRecord).bangumi_subject_id
+                    && !(rec as SeasonRecord).bangumi_scanned
+                    && (rec as SeasonRecord).global_status
+            );
+            addLog({ name: '📋 Pass 1', success: true, detail: `找到 ${unlinked.length} 条待搜索的本地新增条目` });
+
+            // Log the names of unlinked items for debugging
+            if (unlinked.length > 0) {
+                const names = unlinked.slice(0, 5).map(([, r]) => (r as SeasonRecord).show_name || (r as SeasonRecord).name || '?').join(', ');
+                addLog({ name: '📋 待搜索', success: true, detail: names + (unlinked.length > 5 ? ` …+${unlinked.length - 5}` : '') });
+            }
+
+            setImportProgress(unlinked.length > 0 ? { current: 0, total: unlinked.length, name: '' } : null);
+
+            for (let i = 0; i < unlinked.length; i++) {
+                const [recKey, rec] = unlinked[i];
+                const sr = rec as SeasonRecord;
+                const displayName = sr.show_name || sr.name || `TV ${sr.tmdb_id}`;
+                setImportProgress({ current: i + 1, total: unlinked.length, name: displayName });
+
+                // Search Bangumi for this show
+                let results: Awaited<ReturnType<typeof bangumiSearchSubject>>;
+                try {
+                    results = await bangumiSearchSubject(displayName, token);
+                } catch (err) {
+                    addLog({ name: displayName, success: false, detail: `搜索 API 出错：${(err as Error).message}` });
+                    skipped++;
+                    continue;
+                }
+
+                addLog({ name: displayName, success: true, detail: `搜索返回 ${results.length} 条结果` });
+
+                const match = results[0];
+                if (!match) {
+                    useProgressStore.setState((s) => ({
+                        data: {
+                            ...s.data,
+                            records: {
+                                ...s.data.records,
+                                [recKey]: { ...s.data.records[recKey], bangumi_scanned: true },
+                            },
+                        },
+                    }));
+                    addLog({ name: displayName, success: false, detail: '未在 Bangumi 找到匹配，已标记跳过' });
+                    skipped++;
+                    await new Promise((r) => setTimeout(r, 200));
+                    continue;
+                }
+
+                // Cache the subject_id and mark as scanned
+                useProgressStore.setState((s) => ({
+                    data: {
+                        ...s.data,
+                        records: {
+                            ...s.data.records,
+                            [recKey]: { ...s.data.records[recKey], bangumi_subject_id: match.id, bangumi_scanned: true },
+                        },
+                    },
+                }));
+
+                // Push status to Bangumi (creates new entry if not exists)
+                if (sr.global_status) {
+                    try {
+                        await bangumiPostCollection(token, match.id, {
+                            type: GRIDTRAX_TO_BANGUMI[sr.global_status],
+                            rate: sr.rating || 0,
+                        });
+                        addLog({ name: displayName, success: true, detail: `✅ 已在 Bangumi 新建「${match.name_cn || match.name}」· ${sr.global_status}` });
+                        newPushed++;
+                    } catch (err) {
+                        addLog({ name: displayName, success: false, detail: `推送失败：${(err as Error).message}` });
+                    }
+                }
+
+                // Add to bgmMap so conflict pass doesn't re-process
+                bgmMap.set(match.id, {
+                    subject_id: match.id,
+                    subject_type: 2,
+                    rate: sr.rating || 0,
+                    type: GRIDTRAX_TO_BANGUMI[sr.global_status!],
+                    comment: null,
+                    ep_status: 0,
+                    vol_status: 0,
+                    updated_at: new Date().toISOString(),
+                    subject: { id: match.id, name: match.name, name_cn: match.name_cn, type: 2 },
+                });
+                await new Promise((r) => setTimeout(r, 250));
+            }
+
+            setImportProgress(null);
+
+            // ── Pass 2: Existing linked records — conflict detection ──────────
+            // Refresh store state after caching subject IDs in Pass 1
+            const refreshed = useProgressStore.getState();
+            for (const [key, rec] of Object.entries(refreshed.data.records)) {
                 if (rec.type !== 'tv_season') continue;
                 const sr = rec as SeasonRecord;
                 if (!sr.bangumi_subject_id) continue;
@@ -260,45 +393,51 @@ const BangumiSyncPanel: React.FC = () => {
                 setResolver(null);
 
                 let synced = 0;
-                for (const [_key, rec] of Object.entries(store.data.records)) {
+                for (const [_key, rec] of Object.entries(refreshed.data.records)) {
                     if (rec.type !== 'tv_season') continue;
                     const sr = rec as SeasonRecord;
                     if (!sr.bangumi_subject_id) continue;
                     const bgm = bgmMap.get(sr.bangumi_subject_id);
                     if (!bgm) continue;
                     if (pref === 'remote') {
-                        store.setSeasonStatus(sr.tmdb_id, sr.season_number, BANGUMI_TO_GRIDTRAX[bgm.type]);
-                        if (bgm.rate > 0) store.setSeasonRating(sr.tmdb_id, sr.season_number, bgm.rate);
+                        refreshed.setSeasonStatus(sr.tmdb_id, sr.season_number, BANGUMI_TO_GRIDTRAX[bgm.type]);
+                        if (bgm.rate > 0) refreshed.setSeasonRating(sr.tmdb_id, sr.season_number, bgm.rate);
                         addLog({ name: sr.show_name || `TV ${sr.tmdb_id}`, success: true, detail: `Bangumi→ ${BANGUMI_TO_GRIDTRAX[bgm.type]}` });
                     } else {
                         if (sr.global_status) {
-                            await bangumiPatchCollection(token, sr.bangumi_subject_id, { type: GRIDTRAX_TO_BANGUMI[sr.global_status], rate: sr.rating });
+                            await bangumiPostCollection(token, sr.bangumi_subject_id, { type: GRIDTRAX_TO_BANGUMI[sr.global_status], rate: sr.rating });
                             addLog({ name: sr.show_name || `TV ${sr.tmdb_id}`, success: true, detail: `GridTrax→ Bangumi · ${sr.global_status}` });
                         }
                     }
                     synced++;
                 }
-                setSummary({ matched: synced, skipped: 0, total: synced });
+                setSummary({ matched: newPushed + synced, skipped, total: unlinked.length + synced });
             } else {
                 setSyncMessage('无冲突，推送本地进度到 Bangumi…');
                 let synced = 0;
-                for (const rec of Object.values(store.data.records)) {
+                for (const rec of Object.values(refreshed.data.records)) {
                     if (rec.type !== 'tv_season') continue;
                     const sr = rec as SeasonRecord;
                     if (!sr.bangumi_subject_id || !sr.global_status) continue;
-                    await bangumiPatchCollection(token, sr.bangumi_subject_id, { type: GRIDTRAX_TO_BANGUMI[sr.global_status], rate: sr.rating });
+                    const alreadyPushed = bgmMap.has(sr.bangumi_subject_id) &&
+                        newPushed > 0 &&
+                        unlinked.some(([, r]) => (r as SeasonRecord).tmdb_id === sr.tmdb_id);
+                    if (alreadyPushed) continue; // already pushed in pass 1
+                    await bangumiPostCollection(token, sr.bangumi_subject_id, { type: GRIDTRAX_TO_BANGUMI[sr.global_status], rate: sr.rating });
                     addLog({ name: sr.show_name || `TV ${sr.tmdb_id}`, success: true, detail: `推送 · ${sr.global_status}` });
                     synced++;
                 }
-                setSummary({ matched: synced, skipped: 0, total: synced });
+                setSummary({ matched: newPushed + synced, skipped, total: unlinked.length + synced });
                 setSyncMessage('');
             }
         } catch (e) {
-            setSyncMessage('');
+            setSyncMessage(`同步出错：${(e as Error).message}`);
         } finally {
             setSyncRunning(false);
+            setImportProgress(null);
         }
     };
+
 
     return (
         <>
@@ -573,8 +712,9 @@ const BangumiSyncPanel: React.FC = () => {
 
 export default BangumiSyncPanel;
 
-// ── Auto-push helper ──────────────────────────────────────────────────────────
+// ── Auto-push helpers ─────────────────────────────────────────────────────────
 
+/** Silently push collection status + rating to Bangumi after a local change. */
 export async function autoPushToBangumi(
     bangumi_subject_id: number | undefined,
     collectionType: BangumiCollectionType | undefined,
@@ -583,8 +723,75 @@ export async function autoPushToBangumi(
     const { token } = useBangumiStore.getState();
     if (!token || !bangumi_subject_id || !collectionType) return;
     try {
-        await bangumiPatchCollection(token, bangumi_subject_id, { type: collectionType, rate: rating });
+        await bangumiPostCollection(token, bangumi_subject_id, { type: collectionType, rate: rating });
     } catch {
         // Silently fail
+    }
+}
+
+/**
+ * Silently push a single episode's watched state to Bangumi after a local toggle.
+ *
+ * Strategy:
+ *  1. Read the cached `bangumi_episode_ids` from SeasonRecord (sort → bgm_ep_id).
+ *  2. If the cache is missing, fetch from `GET /v0/episodes?subject_id=...` and persist it.
+ *  3. Resolve the Bangumi episode ID for `episodeNumber` by its sort number.
+ *  4. Call `PUT /v0/users/-/collections/{subject_id}/episodes` with type=2 (watched) or type=0 (unwatched).
+ */
+export async function autoPushEpisodeToBangumi(
+    tvId: number,
+    seasonNumber: number,
+    episodeNumber: number,
+    watched: boolean,
+): Promise<void> {
+    const { token } = useBangumiStore.getState();
+    if (!token) return;
+
+    // Lazy-import to avoid circular deps at module load time
+    const { useProgressStore } = await import('../store/useProgressStore');
+    const { bangumiGetEpisodes, bangumiPutEpisodes } = await import('../api/bangumiService');
+
+    const seasonRecKey = `tmdb_tv_${tvId}_s${seasonNumber}`;
+    const store = useProgressStore.getState();
+    const rec = store.data.records[seasonRecKey];
+    if (!rec || rec.type !== 'tv_season') return;
+
+    const subject_id = rec.bangumi_subject_id;
+    if (!subject_id) return;
+
+    try {
+        // Use cached map or fetch it
+        let idMap: Record<string, number> = rec.bangumi_episode_ids ?? {};
+
+        if (!idMap[String(episodeNumber)]) {
+            const episodes = await bangumiGetEpisodes(subject_id);
+            const newMap: Record<string, number> = {};
+            for (const ep of episodes) {
+                // ep.sort is the display episode number (1, 2, 3, …)
+                newMap[String(Math.round(ep.sort))] = ep.id;
+            }
+            idMap = newMap;
+
+            // Persist the episode ID cache into the store
+            useProgressStore.setState((s) => ({
+                data: {
+                    ...s.data,
+                    records: {
+                        ...s.data.records,
+                        [seasonRecKey]: {
+                            ...s.data.records[seasonRecKey],
+                            bangumi_episode_ids: newMap,
+                        },
+                    },
+                },
+            }));
+        }
+
+        const bgmEpId = idMap[String(episodeNumber)];
+        if (!bgmEpId) return; // No matching episode on Bangumi side
+
+        await bangumiPutEpisodes(token, subject_id, [bgmEpId], watched ? 2 : 0);
+    } catch {
+        // Silently fail — never interrupt the user's local flow
     }
 }
