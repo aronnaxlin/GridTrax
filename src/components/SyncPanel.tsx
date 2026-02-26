@@ -189,9 +189,10 @@ const SyncPanel: React.FC = () => {
     const handleJsonExport = () => {
         try {
             const bangumiState = useBangumiStore.getState();
+            const settingsState = useSettingsStore.getState();
             const exportData = {
                 metadata: {
-                    version: 2,
+                    version: 3,
                     exported_at: new Date().toISOString(),
                 },
                 progressData: { ...progressData, last_sync: Date.now() },
@@ -201,7 +202,11 @@ const SyncPanel: React.FC = () => {
                     userId: bangumiState.userId,
                     nickname: bangumiState.nickname,
                     lastSyncAt: bangumiState.lastSyncAt,
-                }
+                    autoSyncEnabled: bangumiState.autoSyncEnabled,
+                },
+                settings: {
+                    tmdbApiKey: settingsState.tmdbApiKey,
+                },
             };
             const blob = new Blob(
                 [JSON.stringify(exportData, null, 2)],
@@ -227,7 +232,7 @@ const SyncPanel: React.FC = () => {
                 const parsed = JSON.parse(ev.target?.result as string);
                 let incomingProgress: ProgressData;
 
-                if (parsed.metadata?.version === 2 && parsed.progressData) {
+                if (parsed.metadata?.version >= 2 && parsed.progressData) {
                     incomingProgress = parsed.progressData;
                     if (parsed.bangumi) {
                         useBangumiStore.setState({
@@ -236,7 +241,15 @@ const SyncPanel: React.FC = () => {
                             userId: parsed.bangumi.userId || null,
                             nickname: parsed.bangumi.nickname || '',
                             lastSyncAt: parsed.bangumi.lastSyncAt || null,
+                            autoSyncEnabled: parsed.bangumi.autoSyncEnabled ?? false,
                         });
+                    }
+                    if (parsed.settings?.tmdbApiKey) {
+                        useSettingsStore.getState().setTmdbApiKey(parsed.settings.tmdbApiKey);
+                    }
+                    // Legacy v2: tmdb_api_key was stored inside progressData
+                    if (!parsed.settings?.tmdbApiKey && parsed.progressData?.tmdb_api_key) {
+                        useSettingsStore.getState().setTmdbApiKey(parsed.progressData.tmdb_api_key);
                     }
                 } else {
                     incomingProgress = parsed as ProgressData;
