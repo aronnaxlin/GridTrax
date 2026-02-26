@@ -78,7 +78,7 @@
 
 #### 2. 配置构建参数
 在“Set up builds and deployments”页面填写如下参数：
-- **Framework preset**: `Vite`
+- **Framework preset**: `Vite` (若列表中没有，请选择 `None`)
 - **Build command**: `npm run build`
 - **Build output directory**: `dist`
 

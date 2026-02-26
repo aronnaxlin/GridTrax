@@ -17,9 +17,11 @@ import {
     DialogContent,
     DialogTitle,
     Divider,
+    FormControlLabel,
     IconButton,
     InputAdornment,
     Stack,
+    Switch,
     TextField,
     Tooltip,
     Typography,
@@ -146,7 +148,7 @@ const ConflictDialog: React.FC<{
 const BangumiSyncPanel: React.FC = () => {
     const theme = useTheme();
     const primary = theme.palette.primary.main;
-    const { token, username, nickname, setToken, setUserInfo } = useBangumiStore();
+    const { token, username, nickname, setToken, setUserInfo, autoSyncEnabled, setAutoSyncEnabled } = useBangumiStore();
 
     const [open, setOpen] = useState(false);
     const [formToken, setFormToken] = useState(token);
@@ -891,6 +893,30 @@ const BangumiSyncPanel: React.FC = () => {
                                         </Button>
                                     </span>
                                 </Tooltip>
+                            </Box>
+                        )}
+
+                        {/* ── Auto-sync toggle ── */}
+                        {isConfigured && (
+                            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', py: 0.5 }}>
+                                <Box>
+                                    <Typography variant="body2" fontWeight={600}>状态更新后自动同步到 Bangumi</Typography>
+                                    <Typography variant="caption" color="text.secondary">
+                                        开启后，每次在 GridTrax 修改状态或进度时会立即推送至 Bangumi；关闭后仅通过「增量同步」按钮同步
+                                    </Typography>
+                                </Box>
+                                <FormControlLabel
+                                    control={
+                                        <Switch
+                                            checked={autoSyncEnabled}
+                                            onChange={(e) => setAutoSyncEnabled(e.target.checked)}
+                                            color="primary"
+                                            size="small"
+                                        />
+                                    }
+                                    label=""
+                                    sx={{ ml: 1, mr: 0 }}
+                                />
                             </Box>
                         )}
 

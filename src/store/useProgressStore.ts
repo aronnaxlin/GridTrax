@@ -9,6 +9,7 @@ import type {
     SeasonRecord,
     WatchStatus,
 } from '../types';
+import { useBangumiStore } from './useBangumiStore';
 
 interface ProgressState {
     data: ProgressData;
@@ -140,7 +141,9 @@ export const useProgressStore = create<ProgressState>()(
                 // Note: get() here returns the already-toggled state, so use it directly
                 const afterToggle = (get().data.records[key] as SeasonRecord | undefined)
                     ?.episodes?.[String(episodeNumber)]?.watched ?? false;
-                void autoPushEpisodeToBangumi(tvId, seasonNumber, episodeNumber, afterToggle);
+                if (useBangumiStore.getState().autoSyncEnabled) {
+                    void autoPushEpisodeToBangumi(tvId, seasonNumber, episodeNumber, afterToggle);
+                }
             },
 
             watchUpToEpisode: (tvId, seasonNumber, episodeNumber, meta) => {
@@ -169,8 +172,10 @@ export const useProgressStore = create<ProgressState>()(
                     };
                 });
                 // Push all newly-watched episodes to Bangumi in the background
-                for (let i = 1; i <= episodeNumber; i++) {
-                    void autoPushEpisodeToBangumi(tvId, seasonNumber, i, true);
+                if (useBangumiStore.getState().autoSyncEnabled) {
+                    for (let i = 1; i <= episodeNumber; i++) {
+                        void autoPushEpisodeToBangumi(tvId, seasonNumber, i, true);
+                    }
                 }
             },
 
@@ -220,18 +225,20 @@ export const useProgressStore = create<ProgressState>()(
                     },
                 }));
                 // Auto-push/auto-link to Bangumi (best-effort, async)
-                const rec = get().data.records[key] as SeasonRecord | undefined;
-                if (rec?.bangumi_subject_id) {
-                    // Already linked → just push the updated status
-                    autoPushToBangumi(
-                        rec.bangumi_subject_id,
-                        GRIDTRAX_TO_BANGUMI[status],
-                        rec.rating ?? 0,
-                    );
-                } else if (!rec?.bangumi_scanned) {
-                    // Not yet linked and not yet searched → try to find a match on Bangumi
-                    const showName = rec?.show_name || rec?.name;
-                    void autoLinkAndPushToBangumi(tvId, seasonNumber, showName, status, rec?.rating ?? 0);
+                if (useBangumiStore.getState().autoSyncEnabled) {
+                    const rec = get().data.records[key] as SeasonRecord | undefined;
+                    if (rec?.bangumi_subject_id) {
+                        // Already linked → just push the updated status
+                        autoPushToBangumi(
+                            rec.bangumi_subject_id,
+                            GRIDTRAX_TO_BANGUMI[status],
+                            rec.rating ?? 0,
+                        );
+                    } else if (!rec?.bangumi_scanned) {
+                        // Not yet linked and not yet searched → try to find a match on Bangumi
+                        const showName = rec?.show_name || rec?.name;
+                        void autoLinkAndPushToBangumi(tvId, seasonNumber, showName, status, rec?.rating ?? 0);
+                    }
                 }
             },
 
@@ -248,13 +255,15 @@ export const useProgressStore = create<ProgressState>()(
                     },
                 }));
                 // Auto-push to Bangumi (best-effort)
-                const rec = get().data.records[key] as SeasonRecord | undefined;
-                if (rec?.global_status) {
-                    autoPushToBangumi(
-                        rec.bangumi_subject_id,
-                        GRIDTRAX_TO_BANGUMI[rec.global_status],
-                        rating,
-                    );
+                if (useBangumiStore.getState().autoSyncEnabled) {
+                    const rec = get().data.records[key] as SeasonRecord | undefined;
+                    if (rec?.global_status) {
+                        autoPushToBangumi(
+                            rec.bangumi_subject_id,
+                            GRIDTRAX_TO_BANGUMI[rec.global_status],
+                            rating,
+                        );
+                    }
                 }
             },
 
