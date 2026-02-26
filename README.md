@@ -100,7 +100,7 @@
 ```yaml
 services:
   gridtrax:
-    image: <your-username>/gridtrax:latest
+    image: aronnaxlin/gridtrax:latest
     container_name: gridtrax
     ports:
       - "721:721"
