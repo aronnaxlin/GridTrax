@@ -6,7 +6,7 @@ import type {
     TMDBTVShow,
 } from '../types';
 
-import { useProgressStore } from '../store/useProgressStore';
+import { useSettingsStore } from '../store/useSettingsStore';
 
 const BASE_URL = 'https://api.themoviedb.org/3';
 const ENV_BEARER = import.meta.env.VITE_TMDB_BEARER as string;
@@ -19,7 +19,7 @@ const tmdbAxios = axios.create({
 });
 
 tmdbAxios.interceptors.request.use((config) => {
-    const storeKey = useProgressStore.getState().data.tmdb_api_key;
+    const storeKey = useSettingsStore.getState().tmdbApiKey;
     const token = storeKey || ENV_BEARER;
     if (token) {
         config.headers.Authorization = `Bearer ${token}`;

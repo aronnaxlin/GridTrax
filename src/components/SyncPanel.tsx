@@ -31,6 +31,7 @@ import React, { useRef, useState } from 'react';
 import { mergeProgressData, webdavDownload, webdavUpload } from '../api/webdavService';
 import { useBangumiStore } from '../store/useBangumiStore';
 import { useProgressStore } from '../store/useProgressStore';
+import { useSettingsStore } from '../store/useSettingsStore';
 import type { WebDAVConfig } from '../store/useWebDAVStore';
 import { useWebDAVStore } from '../store/useWebDAVStore';
 import type { ProgressData } from '../types';
@@ -83,8 +84,9 @@ const SyncPanel: React.FC = () => {
     const [formConfig, setFormConfig] = useState<WebDAVConfig>(config);
 
     const progressData = useProgressStore((s) => s.data);
+    const { tmdbApiKey, setTmdbApiKey } = useSettingsStore();
 
-    const [tmdbKey, setTmdbKey] = useState(progressData.tmdb_api_key || '');
+    const [tmdbKey, setTmdbKey] = useState(tmdbApiKey || '');
 
     const [webdavStatus, setWebdavStatus] = useState<StatusResult>(idle);
     const [jsonStatus, setJsonStatus] = useState<StatusResult>(idle);
@@ -99,7 +101,7 @@ const SyncPanel: React.FC = () => {
 
     const openDialog = () => {
         setFormConfig(config);
-        setTmdbKey(useProgressStore.getState().data.tmdb_api_key || '');
+        setTmdbKey(useSettingsStore.getState().tmdbApiKey || '');
         setWebdavStatus(idle);
         setJsonStatus(idle);
         setGeneralStatus(idle);
@@ -341,7 +343,7 @@ const SyncPanel: React.FC = () => {
                                         <IconButton
                                             color="primary"
                                             onClick={() => {
-                                                useProgressStore.getState().setTmdbApiKey(tmdbKey);
+                                                setTmdbApiKey(tmdbKey);
                                                 setGeneralStatus({ type: 'success', message: 'TMDB Token 已保存，立即生效。' });
                                             }}
                                             sx={{
