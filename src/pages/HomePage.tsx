@@ -175,7 +175,7 @@ const HomePage: React.FC = () => {
         const key = `${record.type}-${record.tmdb_id}-${isTv ? tvRecord?.season_number : ''}`;
 
         return (
-            <Grid key={key} sx={{ width: { xs: '50%', sm: '33.33%', md: '25%', lg: '20%' }, p: 1 }}>
+            <Grid key={key} size={{ xs: 6, sm: 4, md: 3, lg: 2.4 }}>
                 <Card
                     sx={{
                         height: '100%',

@@ -5,6 +5,7 @@ import ExitToAppIcon from '@mui/icons-material/ExitToApp';
 import FileDownloadIcon from '@mui/icons-material/FileDownload';
 import SaveIcon from '@mui/icons-material/Save';
 import SyncIcon from '@mui/icons-material/Sync';
+/* eslint-disable react-refresh/only-export-components */
 import {
     Alert,
     Box,
@@ -136,9 +137,9 @@ const ConflictDialog: React.FC<{
                 ))}
             </Box>
         </DialogContent>
-        <DialogActions sx={{ px: 3, pb: 2 }}>
-            <Button onClick={() => onResolve('local')} variant="outlined" sx={{ borderRadius: 2 }}>保留 GridTrax 数据</Button>
-            <Button onClick={() => onResolve('remote')} variant="contained" sx={{ borderRadius: 2 }}>以 Bangumi 为准</Button>
+        <DialogActions sx={{ px: 3, pb: 2, flexDirection: { xs: 'column', sm: 'row' }, gap: 1 }}>
+            <Button onClick={() => onResolve('local')} variant="outlined" sx={{ borderRadius: 2, width: { xs: '100%', sm: 'auto' }, m: { xs: '0 !important', sm: undefined } }}>保留 GridTrax 数据</Button>
+            <Button onClick={() => onResolve('remote')} variant="contained" sx={{ borderRadius: 2, width: { xs: '100%', sm: 'auto' }, m: { xs: '0 !important', sm: undefined } }}>以 Bangumi 为准</Button>
         </DialogActions>
     </Dialog>
 );
@@ -532,7 +533,7 @@ const BangumiSyncPanel: React.FC = () => {
                 setResolver(null);
 
                 let synced = 0;
-                for (const [_key, rec] of Object.entries(refreshed.data.records)) {
+                for (const rec of Object.values(refreshed.data.records)) {
                     if (rec.type !== 'tv_season') continue;
                     const sr = rec as SeasonRecord;
                     if (!sr.bangumi_subject_id) continue;

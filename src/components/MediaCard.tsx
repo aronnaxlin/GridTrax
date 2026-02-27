@@ -55,7 +55,7 @@ const MediaCard: React.FC<MediaCardProps> = ({ item, onClick }) => {
                         }}
                     />
                     {/* Score badge */}
-                    {item.vote_average && item.vote_average > 0 && (
+                    {(item.vote_average ?? 0) > 0 && (
                         <Chip
                             icon={<StarIcon sx={{ color: '#FFD54F !important', fontSize: '14px' }} />}
                             label={score}

@@ -1,4 +1,4 @@
-import { Box, Tooltip, Typography } from '@mui/material';
+import { Box, Menu, MenuItem, Tooltip, Typography } from '@mui/material';
 import { alpha, useTheme } from '@mui/material/styles';
 import React, { useCallback, useRef, useState } from 'react';
 import type { TMDBEpisode } from '../types';
@@ -23,9 +23,21 @@ const EpisodeCell: React.FC<EpisodeCellProps> = ({
     const theme = useTheme();
     const [pressed, setPressed] = useState(false);
     const [ripple, setRipple] = useState(false);
+    const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
+    const isMenuOpen = Boolean(anchorEl);
+
     const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
     const didLongPress = useRef(false);
     const didContextMenu = useRef(false);
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const handleMenuClose = (e?: any) => {
+        if (e && e.stopPropagation) {
+            e.stopPropagation();
+            e.preventDefault();
+        }
+        setAnchorEl(null);
+    };
 
     const triggerRipple = useCallback(() => {
         setRipple(true);
@@ -34,58 +46,64 @@ const EpisodeCell: React.FC<EpisodeCellProps> = ({
 
     const handlePressStart = useCallback(
         (e: React.MouseEvent | React.TouchEvent) => {
-            // Right-click is handled by contextmenu, skip press tracking
-            if ('button' in e && e.button === 2) return;
+            if (isMenuOpen) return;
+            // Native right click handles its own context menu
+            if ('button' in e && e.button !== 0) return;
+
+            const target = e.currentTarget as HTMLElement;
             didLongPress.current = false;
             didContextMenu.current = false;
             setPressed(true);
+
             longPressTimer.current = setTimeout(() => {
                 didLongPress.current = true;
                 setPressed(false);
                 triggerRipple();
-                onWatchUpTo(episode.episode_number);
+                setAnchorEl(target);
+                if (navigator.vibrate) {
+                    navigator.vibrate(50);
+                }
             }, LONG_PRESS_DURATION);
         },
-        [episode.episode_number, onWatchUpTo, triggerRipple]
+        [isMenuOpen, triggerRipple]
     );
 
-    const handlePressEnd = useCallback(() => {
-        if (longPressTimer.current) {
-            clearTimeout(longPressTimer.current);
-            longPressTimer.current = null;
-        }
-        setPressed(false);
-        // Skip single-click if a long-press or right-click already handled it
-        if (!didLongPress.current && !didContextMenu.current) {
-            triggerRipple();
-            onSingleClick(episode.episode_number);
-        }
-        didContextMenu.current = false;
-    }, [episode.episode_number, onSingleClick, triggerRipple]);
+    const handlePressEnd = useCallback(
+        (e: React.MouseEvent | React.TouchEvent) => {
+            if (longPressTimer.current) {
+                clearTimeout(longPressTimer.current);
+                longPressTimer.current = null;
+            }
+            setPressed(false);
+            
+            // Skip single-click if a long-press/right-click just triggered the menu
+            if (!didLongPress.current && !didContextMenu.current && !isMenuOpen) {
+                // If it's a touchend event, we need to prevent the simulated mouse events from firing and triggering a double click
+                if (e.type === 'touchend') {
+                    // e.preventDefault();
+                }
+                triggerRipple();
+                onSingleClick(episode.episode_number);
+            }
+            didContextMenu.current = false;
+        },
+        [episode.episode_number, isMenuOpen, onSingleClick, triggerRipple]
+    );
 
     const handleContextMenu = useCallback(
         (e: React.MouseEvent) => {
             e.preventDefault();
-            didContextMenu.current = true;
+            didContextMenu.current = true; // prevent immediate click trigger
             triggerRipple();
-            onWatchUpTo(episode.episode_number);
+            setAnchorEl(e.currentTarget as HTMLElement);
         },
-        [episode.episode_number, onWatchUpTo, triggerRipple]
+        [triggerRipple]
     );
-
-    const handleDoubleClick = useCallback(
-        (e: React.MouseEvent) => {
-            e.preventDefault();
-            onCommentRequest(episode);
-        },
-        [episode, onCommentRequest]
-    );
-
-    const cellSize = 36;
     const primary = theme.palette.primary.main;
 
     return (
-        <Tooltip
+        <>
+            <Tooltip
             title={
                 <Box>
                     <Typography variant="caption" fontWeight={600}>
@@ -97,7 +115,7 @@ const EpisodeCell: React.FC<EpisodeCellProps> = ({
                         </Typography>
                     )}
                     <Typography variant="caption" display="block" sx={{ opacity: 0.6, mt: 0.3 }}>
-                        长按/右键 → 看到这里 · 双击 → 吐槽
+                        长按/右键打开菜单
                     </Typography>
                 </Box>
             }
@@ -118,12 +136,11 @@ const EpisodeCell: React.FC<EpisodeCellProps> = ({
                 onTouchStart={handlePressStart}
                 onTouchEnd={handlePressEnd}
                 onContextMenu={handleContextMenu}
-                onDoubleClick={handleDoubleClick}
                 sx={{
                     position: 'relative',
-                    width: cellSize,
-                    height: cellSize,
-                    minWidth: cellSize,
+                    width: { xs: 44, sm: 36 },
+                    height: { xs: 44, sm: 36 },
+                    minWidth: { xs: 44, sm: 36 },
                     border: 'none',
                     outline: 'none',
                     borderRadius: '8px',
@@ -153,14 +170,19 @@ const EpisodeCell: React.FC<EpisodeCellProps> = ({
                         background: alpha('#fff', ripple ? 0.25 : 0),
                         transition: 'background 350ms ease',
                     },
-                    // Touch target ensure >= 48dp on mobile
+                    // Touch target ensure >= 44dp on mobile
                     '@media (pointer: coarse)': {
                         width: 44,
                         height: 44,
+                        minWidth: 44
                     },
+                    touchAction: 'none', // Critical for dragging vs clicking reliability
                 }}
                 aria-label={`第 ${episode.episode_number} 集${watched ? '（已看）' : ''}`}
                 aria-pressed={watched}
+                aria-controls={isMenuOpen ? 'episode-context-menu' : undefined}
+                aria-haspopup="true"
+                aria-expanded={isMenuOpen ? 'true' : undefined}
             >
                 <Typography
                     variant="caption"
@@ -175,7 +197,42 @@ const EpisodeCell: React.FC<EpisodeCellProps> = ({
                     {episode.episode_number}
                 </Typography>
             </Box>
-        </Tooltip>
+            </Tooltip>
+
+            <Menu
+                id="episode-context-menu"
+                anchorEl={anchorEl}
+                open={isMenuOpen}
+                onClose={handleMenuClose}
+                MenuListProps={{
+                    'aria-labelledby': 'episode-button',
+                }}
+                anchorOrigin={{
+                    vertical: 'bottom',
+                    horizontal: 'center',
+                }}
+                transformOrigin={{
+                    vertical: 'top',
+                    horizontal: 'center',
+                }}
+                PaperProps={{
+                    sx: { borderRadius: 3, mt: 0.5, minWidth: 140 }
+                }}
+            >
+                <MenuItem onClick={(e) => {
+                    handleMenuClose(e);
+                    onWatchUpTo(episode.episode_number);
+                }}>
+                    看到这里
+                </MenuItem>
+                <MenuItem onClick={(e) => {
+                    handleMenuClose(e);
+                    onCommentRequest(episode);
+                }}>
+                    添加吐槽
+                </MenuItem>
+            </Menu>
+        </>
     );
 };
 

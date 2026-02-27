@@ -383,7 +383,7 @@ const SyncPanel: React.FC = () => {
                             <Typography variant="overline" color="text.secondary" sx={{ fontWeight: 700, letterSpacing: 1 }}>
                                 JSON 导入 / 导出
                             </Typography>
-                            <Stack direction="row" spacing={1.5} sx={{ mt: 1 }}>
+                            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} sx={{ mt: 1 }}>
                                 <Button
                                     variant="outlined"
                                     startIcon={<DownloadIcon />}
@@ -434,7 +434,7 @@ const SyncPanel: React.FC = () => {
                                     fullWidth
                                     slotProps={{ inputLabel: { shrink: true } }}
                                 />
-                                <Stack direction="row" spacing={1.5}>
+                                <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5}>
                                     <TextField
                                         label="用户名"
                                         value={formConfig.username}

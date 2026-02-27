@@ -1,3 +1,4 @@
+/* eslint-disable react-refresh/only-export-components */
 import { Box, Rating, ToggleButton, ToggleButtonGroup, Typography } from '@mui/material';
 import { alpha, useTheme } from '@mui/material/styles';
 import React from 'react';
@@ -78,7 +79,7 @@ const GlobalStatusPicker: React.FC<GlobalStatusPickerProps> = ({
                         sx={{
                             px: 1.5,
                             py: 0.5,
-                            borderRadius: '8px !important',
+                            borderRadius: '8px',
                             fontSize: '0.75rem',
                             fontWeight: 600,
                             gap: 0.6,
@@ -101,7 +102,7 @@ const GlobalStatusPicker: React.FC<GlobalStatusPickerProps> = ({
             </ToggleButtonGroup>
 
             {/* 10-star Rating */}
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
                 <Rating
                     max={10}
                     value={rating}

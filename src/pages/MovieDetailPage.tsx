@@ -40,7 +40,7 @@ const MovieDetailPage: React.FC = () => {
 
     useEffect(() => {
         if (!id) return;
-        setLoading(true);
+        queueMicrotask(() => setLoading(true));
         getMovie(Number(id))
             .then((m) => {
                 setMovie(m);
@@ -58,14 +58,16 @@ const MovieDetailPage: React.FC = () => {
         <React.Fragment>
             <Box sx={{ minHeight: '100vh', backgroundColor: theme.palette.background.default }}>
                 {/* Backdrop */}
-                <Box sx={{ position: 'relative', height: { xs: 220, sm: 300, md: 380 }, overflow: 'hidden', mb: -6 }}>
-                    {movie?.backdrop_path && (
+                <Box sx={{ position: 'relative', height: { xs: 220, sm: 300, md: 380 }, overflow: 'hidden', mb: -6, backgroundColor: 'background.paper' }}>
+                    {movie?.backdrop_path ? (
                         <Box
                             component="img"
                             src={getBackdropUrl(movie.backdrop_path)}
                             alt=""
                             sx={{ width: '100%', height: '100%', objectFit: 'cover', filter: 'brightness(0.4)' }}
                         />
+                    ) : (
+                        <Skeleton variant="rectangular" width="100%" height="100%" animation="wave" />
                     )}
                     <Box
                         sx={{
@@ -76,7 +78,7 @@ const MovieDetailPage: React.FC = () => {
                     <IconButton
                         onClick={() => navigate(-1)}
                         sx={{
-                            position: 'absolute', top: 16, left: 16,
+                            position: 'absolute', top: 'calc(env(safe-area-inset-top, 0px) + 16px)', left: 16,
                             backgroundColor: alpha('#000', 0.5), color: '#fff',
                             '&:hover': { backgroundColor: alpha('#000', 0.7) },
                         }}
@@ -85,7 +87,7 @@ const MovieDetailPage: React.FC = () => {
                     </IconButton>
                 </Box>
 
-                <Container maxWidth="md" sx={{ pt: 6, pb: 8, overflow: 'visible' }}>
+                <Container maxWidth="lg" sx={{ pt: 6, pb: 8, overflow: 'visible' }}>
                     {error && <Alert severity="error" sx={{ mb: 3 }}>{error}</Alert>}
 
                     {loading ? (
@@ -100,13 +102,13 @@ const MovieDetailPage: React.FC = () => {
                     ) : movie ? (
                         <>
                             {/* Movie Header */}
-                            <Box sx={{ display: 'flex', gap: { xs: 2, sm: 3 }, mb: 4, alignItems: 'flex-start' }}>
+                            <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: { xs: 2, sm: 3 }, mb: 4, alignItems: { xs: 'center', sm: 'flex-start' } }}>
                                 <Box
                                     component="img"
                                     src={getPosterUrl(movie.poster_path, 'w342')}
                                     alt={movie.title}
                                     sx={{
-                                        width: { xs: 100, sm: 150 },
+                                        width: { xs: 120, sm: 150 },
                                         aspectRatio: '2/3',
                                         objectFit: 'cover',
                                         borderRadius: 2,

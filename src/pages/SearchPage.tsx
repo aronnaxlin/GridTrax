@@ -28,11 +28,13 @@ const SearchPage: React.FC = () => {
     }, []);
 
     useEffect(() => {
-        if (query) {
-            doSearch(query);
-        } else {
-            setResults([]);
-        }
+        queueMicrotask(() => {
+            if (query) {
+                doSearch(query);
+            } else {
+                setResults([]);
+            }
+        });
     }, [query, doSearch]);
 
     const handleCardClick = useCallback(
@@ -79,7 +81,7 @@ const SearchPage: React.FC = () => {
                 {!loading && results.length > 0 && (
                     <Grid container spacing={2}>
                         {results.map((item) => (
-                            <Grid key={`${item.media_type}-${item.id}`} sx={{ width: { xs: '50%', sm: '33.33%', md: '25%', lg: '16.66%' } }}>
+                            <Grid key={`${item.media_type}-${item.id}`} size={{ xs: 6, sm: 4, md: 3, lg: 2 }}>
                                 <MediaCard item={item} onClick={handleCardClick} />
                             </Grid>
                         ))}

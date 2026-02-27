@@ -53,11 +53,11 @@ const HomeMovieActiveCard: React.FC<HomeMovieActiveCardProps> = ({
                             component="img"
                             src={poster}
                             alt={titleText}
-                            sx={{ width: 80, height: 120, borderRadius: 1.5, objectFit: 'cover', mr: 2 }}
+                            sx={{ width: { xs: 64, sm: 80 }, aspectRatio: '2/3', height: 'auto', borderRadius: 1.5, objectFit: 'cover', mr: 2 }}
                         />
                     ) : (
                         <Box sx={{
-                            width: 80, height: 120, borderRadius: 1.5, mr: 2,
+                            width: { xs: 64, sm: 80 }, aspectRatio: '2/3', height: 'auto', borderRadius: 1.5, mr: 2,
                             backgroundColor: alpha(primary, 0.1),
                             display: 'flex', alignItems: 'center', justifyContent: 'center'
                         }}>

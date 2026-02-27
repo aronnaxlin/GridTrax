@@ -1,15 +1,18 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Noto+Sans+SC:wght@400;500;700&display=swap');
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Noto+Sans+SC:wght@400;500;700&display=swap");
 
-*, *::before, *::after {
+*,
+*::before,
+*::after {
   box-sizing: border-box;
 }
 
-html, body {
+html,
+body {
   margin: 0;
   padding: 0;
   background-color: #141218;
-  color: #E6E0E9;
-  font-family: 'Inter', 'Noto Sans SC', 'Roboto', sans-serif;
+  color: #e6e0e9;
+  font-family: "Inter", "Noto Sans SC", "Roboto", sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
@@ -32,11 +35,4 @@ html, body {
 }
 ::-webkit-scrollbar-thumb:hover {
   background: rgba(208, 188, 255, 0.4);
-}
-
-/* Touch action for long-press cells */
-button {
-  touch-action: none;
-  -webkit-user-select: none;
-  user-select: none;
 }

@@ -3,7 +3,7 @@ import { IconButton, InputBase, Paper } from '@mui/material';
 import React, { useCallback, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
-const SearchBar: React.FC = () => {
+const SearchBar: React.FC<{ onExpandChange?: (expanded: boolean) => void }> = ({ onExpandChange }) => {
     const navigate = useNavigate();
     const [expanded, setExpanded] = useState(false);
     const [query, setQuery] = useState('');
@@ -11,6 +11,7 @@ const SearchBar: React.FC = () => {
 
     const handleExpand = () => {
         setExpanded(true);
+        onExpandChange?.(true);
         setTimeout(() => {
             inputRef.current?.focus();
         }, 100);
@@ -19,6 +20,7 @@ const SearchBar: React.FC = () => {
     const handleCollapse = () => {
         if (!query) {
             setExpanded(false);
+            onExpandChange?.(false);
         }
     };
 
@@ -27,9 +29,10 @@ const SearchBar: React.FC = () => {
         if (query.trim()) {
             navigate(`/search?q=${encodeURIComponent(query.trim())}`);
             setExpanded(false);
+            onExpandChange?.(false);
             setQuery('');
         }
-    }, [navigate, query]);
+    }, [navigate, query, onExpandChange]);
 
     return (
         <Paper
@@ -40,7 +43,7 @@ const SearchBar: React.FC = () => {
                 p: '2px 4px',
                 display: 'flex',
                 alignItems: 'center',
-                width: expanded ? { xs: 200, sm: 300, md: 400 } : 48,
+                width: expanded ? { xs: '100%', sm: 300, md: 400 } : 48,
                 transition: 'width 0.3s cubic-bezier(0.4, 0, 0.2, 1), background-color 0.3s',
                 backgroundColor: expanded ? 'background.paper' : 'transparent',
                 borderRadius: 8,

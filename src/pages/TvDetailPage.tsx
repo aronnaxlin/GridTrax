@@ -3,6 +3,7 @@ import StarIcon from '@mui/icons-material/Star';
 import {
     Alert,
     Box,
+    Button,
     Chip,
     Container,
     IconButton,
@@ -22,14 +23,28 @@ const TvDetailPage: React.FC = () => {
     const [show, setShow] = useState<TMDBTVShow | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
+    const [expandedOverview, setExpandedOverview] = useState(false);
 
     useEffect(() => {
         if (!id) return;
-        setLoading(true);
+        let isMounted = true;
+        queueMicrotask(() => {
+            if (isMounted) setLoading(true);
+        });
         getTVShow(Number(id))
-            .then(setShow)
-            .catch(() => setError('加载失败，请刷新重试。'))
-            .finally(() => setLoading(false));
+            .then(data => {
+                if (isMounted) setShow(data);
+            })
+            .catch(() => {
+                if (isMounted) setError('加载失败，请刷新重试。');
+            })
+            .finally(() => {
+                if (isMounted) setLoading(false);
+            });
+            
+        return () => {
+            isMounted = false;
+        };
     }, [id]);
 
     const theme = useTheme();
@@ -80,7 +95,7 @@ const TvDetailPage: React.FC = () => {
                         onClick={() => navigate(-1)}
                         sx={{
                             position: 'absolute',
-                            top: 16,
+                            top: 'calc(env(safe-area-inset-top, 0px) + 16px)',
                             left: 16,
                             backgroundColor: alpha('#000', 0.5),
                             color: '#fff',
@@ -106,7 +121,7 @@ const TvDetailPage: React.FC = () => {
                     ) : show ? (
                         <>
                             {/* Show Header */}
-                            <Box sx={{ display: 'flex', gap: { xs: 2, sm: 3 }, mb: 4, alignItems: 'flex-start' }}>
+                            <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: { xs: 2, sm: 3 }, mb: 4, alignItems: { xs: 'center', sm: 'flex-start' } }}>
                                 {/* Poster */}
                                 <Box
                                     component="img"
@@ -161,18 +176,30 @@ const TvDetailPage: React.FC = () => {
                                             />
                                         ))}
                                     </Box>
-                                    <Typography
-                                        variant="body2"
-                                        color="text.secondary"
-                                        sx={{
-                                            display: '-webkit-box',
-                                            WebkitLineClamp: 3,
-                                            WebkitBoxOrient: 'vertical',
-                                            overflow: 'hidden',
-                                        }}
-                                    >
-                                        {show.overview || '暂无简介'}
-                                    </Typography>
+                                    <Box sx={{ position: 'relative' }}>
+                                        <Typography
+                                            variant="body2"
+                                            color="text.secondary"
+                                            sx={{
+                                                display: expandedOverview ? 'block' : '-webkit-box',
+                                                WebkitLineClamp: expandedOverview ? 'unset' : 3,
+                                                WebkitBoxOrient: 'vertical',
+                                                overflow: 'hidden',
+                                                transition: 'all 0.3s ease',
+                                            }}
+                                        >
+                                            {show.overview || '暂无简介'}
+                                        </Typography>
+                                        {show.overview && show.overview.length > 100 && (
+                                            <Button
+                                                size="small"
+                                                onClick={() => setExpandedOverview(!expandedOverview)}
+                                                sx={{ p: 0, minWidth: 'auto', fontSize: '0.75rem', mt: 0.5, textTransform: 'none' }}
+                                            >
+                                                {expandedOverview ? '收起' : '展开阅读'}
+                                            </Button>
+                                        )}
+                                    </Box>
                                 </Box>
                             </Box>
 
