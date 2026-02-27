@@ -38,9 +38,9 @@ export function useAutoWebDAVSync() {
                     
                     if (isSyncPayload) {
                         const payload = remoteData as SyncPayload;
-                        if (payload.bangumi) {
+                        if (payload.bangumi?.token) {
                             useBangumiStore.setState({
-                                token: payload.bangumi.token || '',
+                                token: payload.bangumi.token,
                                 username: payload.bangumi.username || '',
                                 userId: payload.bangumi.userId || null,
                                 nickname: payload.bangumi.nickname || '',
