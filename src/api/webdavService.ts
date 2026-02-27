@@ -10,7 +10,7 @@
  */
 
 import type { WebDAVConfig } from '../store/useWebDAVStore';
-import type { ProgressData } from '../types';
+import type { ProgressData, SyncPayload } from '../types';
 
 function buildHeaders(config: WebDAVConfig): HeadersInit {
     const credentials = btoa(`${config.username}:${config.password}`);
@@ -32,7 +32,7 @@ function resolveUrl(config: WebDAVConfig): string {
  * Returns null if the file does not exist yet (404).
  * Throws on other errors.
  */
-export async function webdavDownload(config: WebDAVConfig): Promise<ProgressData | null> {
+export async function webdavDownload(config: WebDAVConfig): Promise<ProgressData | SyncPayload | null> {
     const url = resolveUrl(config);
     const response = await fetch(url, {
         method: 'GET',
@@ -49,7 +49,7 @@ export async function webdavDownload(config: WebDAVConfig): Promise<ProgressData
 
     try {
         const data = await response.json();
-        return data as ProgressData;
+        return data as ProgressData | SyncPayload;
     } catch {
         throw new Error('WebDAV file exists but is not valid JSON.');
     }
@@ -59,7 +59,7 @@ export async function webdavDownload(config: WebDAVConfig): Promise<ProgressData
  * Upload progress data to WebDAV.
  * Creates the directory if needed via MKCOL (best-effort, ignores 405/301 as dir may already exist).
  */
-export async function webdavUpload(config: WebDAVConfig, data: ProgressData): Promise<void> {
+export async function webdavUpload(config: WebDAVConfig, data: ProgressData | SyncPayload): Promise<void> {
     const url = resolveUrl(config);
     const dirUrl = url.substring(0, url.lastIndexOf('/') + 1);
 

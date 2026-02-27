@@ -34,7 +34,7 @@ import { useProgressStore } from '../store/useProgressStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import type { WebDAVConfig } from '../store/useWebDAVStore';
 import { useWebDAVStore } from '../store/useWebDAVStore';
-import type { ProgressData } from '../types';
+import type { ProgressData, SyncPayload } from '../types';
 
 // ── Animation ────────────────────────────────────────────────────────────────
 
@@ -118,12 +118,52 @@ const SyncPanel: React.FC = () => {
         try {
             const remoteData = await webdavDownload(config);
             let finalData: ProgressData;
+            
             if (!remoteData) {
                 finalData = { ...progressData, last_sync: Date.now() };
             } else {
-                finalData = { ...mergeProgressData(progressData, remoteData), last_sync: Date.now() };
+                // Determine if remoteData is a SyncPayload (has metadata) or just ProgressData
+                const isSyncPayload = 'metadata' in remoteData;
+                const remoteProgressData = isSyncPayload ? (remoteData as SyncPayload).progressData : (remoteData as ProgressData);
+                
+                finalData = { ...mergeProgressData(progressData, remoteProgressData), last_sync: Date.now() };
+
+                // Restore Settings and Bangumi Configurations if they exist in the remote payload
+                if (isSyncPayload) {
+                    const payload = remoteData as SyncPayload;
+                    if (payload.bangumi) {
+                        useBangumiStore.setState({
+                            token: payload.bangumi.token || '',
+                            username: payload.bangumi.username || '',
+                            userId: payload.bangumi.userId || null,
+                            nickname: payload.bangumi.nickname || '',
+                            lastSyncAt: payload.bangumi.lastSyncAt || null,
+                            autoSyncEnabled: payload.bangumi.autoSyncEnabled ?? false,
+                        });
+                    }
+                    if (payload.settings?.tmdbApiKey) {
+                        useSettingsStore.getState().setTmdbApiKey(payload.settings.tmdbApiKey);
+                    }
+                }
             }
-            await webdavUpload(config, finalData);
+
+            const bangumiState = useBangumiStore.getState();
+            const settingsState = useSettingsStore.getState();
+            const uploadPayload: SyncPayload = {
+                metadata: { version: 3, exported_at: new Date().toISOString() },
+                progressData: finalData,
+                bangumi: {
+                    token: bangumiState.token,
+                    username: bangumiState.username,
+                    userId: bangumiState.userId,
+                    nickname: bangumiState.nickname,
+                    lastSyncAt: bangumiState.lastSyncAt,
+                    autoSyncEnabled: bangumiState.autoSyncEnabled,
+                },
+                settings: { tmdbApiKey: settingsState.tmdbApiKey },
+            };
+
+            await webdavUpload(config, uploadPayload);
             useProgressStore.setState((s) => ({ ...s, data: finalData }));
         } catch {
             // Silently fail for quick sync; user can open settings for details
@@ -144,12 +184,50 @@ const SyncPanel: React.FC = () => {
         try {
             const remoteData = await webdavDownload(formConfig);
             let finalData: ProgressData;
+            
             if (!remoteData) {
                 finalData = { ...progressData, last_sync: Date.now() };
             } else {
-                finalData = { ...mergeProgressData(progressData, remoteData), last_sync: Date.now() };
+                const isSyncPayload = 'metadata' in remoteData;
+                const remoteProgressData = isSyncPayload ? (remoteData as SyncPayload).progressData : (remoteData as ProgressData);
+                
+                finalData = { ...mergeProgressData(progressData, remoteProgressData), last_sync: Date.now() };
+
+                if (isSyncPayload) {
+                    const payload = remoteData as SyncPayload;
+                    if (payload.bangumi) {
+                        useBangumiStore.setState({
+                            token: payload.bangumi.token || '',
+                            username: payload.bangumi.username || '',
+                            userId: payload.bangumi.userId || null,
+                            nickname: payload.bangumi.nickname || '',
+                            lastSyncAt: payload.bangumi.lastSyncAt || null,
+                            autoSyncEnabled: payload.bangumi.autoSyncEnabled ?? false,
+                        });
+                    }
+                    if (payload.settings?.tmdbApiKey) {
+                        useSettingsStore.getState().setTmdbApiKey(payload.settings.tmdbApiKey);
+                    }
+                }
             }
-            await webdavUpload(formConfig, finalData);
+
+            const bangumiState = useBangumiStore.getState();
+            const settingsState = useSettingsStore.getState();
+            const uploadPayload: SyncPayload = {
+                metadata: { version: 3, exported_at: new Date().toISOString() },
+                progressData: finalData,
+                bangumi: {
+                    token: bangumiState.token,
+                    username: bangumiState.username,
+                    userId: bangumiState.userId,
+                    nickname: bangumiState.nickname,
+                    lastSyncAt: bangumiState.lastSyncAt,
+                    autoSyncEnabled: bangumiState.autoSyncEnabled,
+                },
+                settings: { tmdbApiKey: settingsState.tmdbApiKey },
+            };
+
+            await webdavUpload(formConfig, uploadPayload);
             useProgressStore.setState((s) => ({ ...s, data: finalData }));
             setWebdavStatus({ type: 'success', message: '双向同步完成！' });
         } catch (e) {
@@ -166,7 +244,28 @@ const SyncPanel: React.FC = () => {
                 setWebdavStatus({ type: 'error', message: '远程文件不存在，请先上传一次。' });
                 return;
             }
-            useProgressStore.setState((s) => ({ ...s, data: remoteData }));
+
+            const isSyncPayload = 'metadata' in remoteData;
+            const finalData = isSyncPayload ? (remoteData as SyncPayload).progressData : (remoteData as ProgressData);
+
+            if (isSyncPayload) {
+                const payload = remoteData as SyncPayload;
+                if (payload.bangumi) {
+                    useBangumiStore.setState({
+                        token: payload.bangumi.token || '',
+                        username: payload.bangumi.username || '',
+                        userId: payload.bangumi.userId || null,
+                        nickname: payload.bangumi.nickname || '',
+                        lastSyncAt: payload.bangumi.lastSyncAt || null,
+                        autoSyncEnabled: payload.bangumi.autoSyncEnabled ?? false,
+                    });
+                }
+                if (payload.settings?.tmdbApiKey) {
+                    useSettingsStore.getState().setTmdbApiKey(payload.settings.tmdbApiKey);
+                }
+            }
+
+            useProgressStore.setState((s) => ({ ...s, data: finalData }));
             setWebdavStatus({ type: 'success', message: '已用远程数据覆盖本地。' });
         } catch (e) {
             setWebdavStatus({ type: 'error', message: (e as Error).message });

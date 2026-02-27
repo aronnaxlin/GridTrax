@@ -9,8 +9,11 @@
 
 import { useEffect, useRef } from 'react';
 import { mergeProgressData, webdavDownload, webdavUpload } from '../api/webdavService';
+import { useBangumiStore } from '../store/useBangumiStore';
 import { useProgressStore } from '../store/useProgressStore';
+import { useSettingsStore } from '../store/useSettingsStore';
 import { useWebDAVStore } from '../store/useWebDAVStore';
+import type { ProgressData, SyncPayload } from '../types';
 
 export function useAutoWebDAVSync() {
     const { config, isConfigured } = useWebDAVStore();
@@ -27,7 +30,29 @@ export function useAutoWebDAVSync() {
                 const remoteData = await webdavDownload(config);
                 if (remoteData) {
                     const localData = useProgressStore.getState().data;
-                    const merged = mergeProgressData(localData, remoteData);
+                    
+                    const isSyncPayload = 'metadata' in remoteData;
+                    const remoteProgressData = isSyncPayload ? (remoteData as SyncPayload).progressData : (remoteData as ProgressData);
+
+                    const merged = mergeProgressData(localData, remoteProgressData);
+                    
+                    if (isSyncPayload) {
+                        const payload = remoteData as SyncPayload;
+                        if (payload.bangumi) {
+                            useBangumiStore.setState({
+                                token: payload.bangumi.token || '',
+                                username: payload.bangumi.username || '',
+                                userId: payload.bangumi.userId || null,
+                                nickname: payload.bangumi.nickname || '',
+                                lastSyncAt: payload.bangumi.lastSyncAt || null,
+                                autoSyncEnabled: payload.bangumi.autoSyncEnabled ?? false,
+                            });
+                        }
+                        if (payload.settings?.tmdbApiKey) {
+                            useSettingsStore.getState().setTmdbApiKey(payload.settings.tmdbApiKey);
+                        }
+                    }
+
                     useProgressStore.setState((s) => ({ ...s, data: merged }));
                 }
             } catch {
@@ -48,14 +73,29 @@ export function useAutoWebDAVSync() {
         const handleVisibilityChange = () => {
             if (document.visibilityState !== 'hidden') return;
 
-            const data = useProgressStore.getState().data;
-            const uploadData = { ...data, last_sync: Date.now() };
+            const finalData = { ...useProgressStore.getState().data, last_sync: Date.now() };
+            const bangumiState = useBangumiStore.getState();
+            const settingsState = useSettingsStore.getState();
+            
+            const uploadPayload: SyncPayload = {
+                metadata: { version: 3, exported_at: new Date().toISOString() },
+                progressData: finalData,
+                bangumi: {
+                    token: bangumiState.token,
+                    username: bangumiState.username,
+                    userId: bangumiState.userId,
+                    nickname: bangumiState.nickname,
+                    lastSyncAt: bangumiState.lastSyncAt,
+                    autoSyncEnabled: bangumiState.autoSyncEnabled,
+                },
+                settings: { tmdbApiKey: settingsState.tmdbApiKey },
+            };
 
             // Use keepalive fetch so the request survives tab close.
             // webdavUpload internally uses fetch without keepalive, so we
             // call it in the synchronous handler. Most browsers will complete
             // in-flight fetch requests for a short window after the page hides.
-            void webdavUpload(config, uploadData).catch(() => {
+            void webdavUpload(config, uploadPayload).catch(() => {
                 // Silently fail
             });
         };

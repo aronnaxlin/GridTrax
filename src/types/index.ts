@@ -124,6 +124,25 @@ export interface ProgressData {
   records: Record<string, ProgressRecord>;
 }
 
+export interface SyncPayload {
+  metadata: {
+    version: number;
+    exported_at: string;
+  };
+  progressData: ProgressData;
+  bangumi?: {
+    token: string;
+    username: string;
+    userId: number | null;
+    nickname: string;
+    lastSyncAt: number | null;
+    autoSyncEnabled: boolean;
+  };
+  settings?: {
+    tmdbApiKey: string;
+  };
+}
+
 // UI helper
 export const STATUS_LABELS: Record<WatchStatus, string> = {
   Wish: '想看',
