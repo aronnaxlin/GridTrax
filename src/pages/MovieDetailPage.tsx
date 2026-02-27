@@ -108,7 +108,8 @@ const MovieDetailPage: React.FC = () => {
                                     src={getPosterUrl(movie.poster_path, 'w342')}
                                     alt={movie.title}
                                     sx={{
-                                        width: { xs: 120, sm: 150 },
+                                        width: { xs: 160, sm: 150 },
+                                        maxWidth: { xs: '55vw', sm: 'none' },
                                         aspectRatio: '2/3',
                                         objectFit: 'cover',
                                         borderRadius: 2,

@@ -29,6 +29,8 @@ const EpisodeCell: React.FC<EpisodeCellProps> = ({
     const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
     const didLongPress = useRef(false);
     const didContextMenu = useRef(false);
+    // Track touch start position to distinguish tap vs scroll
+    const touchStartPos = useRef<{ x: number; y: number } | null>(null);
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const handleMenuClose = (e?: any) => {
@@ -44,11 +46,10 @@ const EpisodeCell: React.FC<EpisodeCellProps> = ({
         setTimeout(() => setRipple(false), 350);
     }, []);
 
-    const handlePressStart = useCallback(
-        (e: React.MouseEvent | React.TouchEvent) => {
+    const handleMouseDown = useCallback(
+        (e: React.MouseEvent) => {
             if (isMenuOpen) return;
-            // Native right click handles its own context menu
-            if ('button' in e && e.button !== 0) return;
+            if (e.button !== 0) return;
 
             const target = e.currentTarget as HTMLElement;
             didLongPress.current = false;
@@ -60,28 +61,22 @@ const EpisodeCell: React.FC<EpisodeCellProps> = ({
                 setPressed(false);
                 triggerRipple();
                 setAnchorEl(target);
-                if (navigator.vibrate) {
-                    navigator.vibrate(50);
-                }
+                if (navigator.vibrate) navigator.vibrate(50);
             }, LONG_PRESS_DURATION);
         },
         [isMenuOpen, triggerRipple]
     );
 
-    const handlePressEnd = useCallback(
-        (e: React.MouseEvent | React.TouchEvent) => {
+    const handleMouseUp = useCallback(
+        (e: React.MouseEvent) => {
+            if (e.button !== 0) return; // Only trigger single click for left mouse button
+
             if (longPressTimer.current) {
                 clearTimeout(longPressTimer.current);
                 longPressTimer.current = null;
             }
             setPressed(false);
-            
-            // Skip single-click if a long-press/right-click just triggered the menu
             if (!didLongPress.current && !didContextMenu.current && !isMenuOpen) {
-                // If it's a touchend event, we need to prevent the simulated mouse events from firing and triggering a double click
-                if (e.type === 'touchend') {
-                    // e.preventDefault();
-                }
                 triggerRipple();
                 onSingleClick(episode.episode_number);
             }
@@ -90,42 +85,119 @@ const EpisodeCell: React.FC<EpisodeCellProps> = ({
         [episode.episode_number, isMenuOpen, onSingleClick, triggerRipple]
     );
 
+    const handleTouchStart = useCallback(
+        (e: React.TouchEvent) => {
+            if (isMenuOpen) return;
+
+            const touch = e.touches[0];
+            touchStartPos.current = { x: touch.clientX, y: touch.clientY };
+
+            const target = e.currentTarget as HTMLElement;
+            didLongPress.current = false;
+            didContextMenu.current = false;
+            setPressed(true);
+
+            longPressTimer.current = setTimeout(() => {
+                didLongPress.current = true;
+                setPressed(false);
+                triggerRipple();
+                setAnchorEl(target);
+                if (navigator.vibrate) navigator.vibrate(50);
+            }, LONG_PRESS_DURATION);
+        },
+        [isMenuOpen, triggerRipple]
+    );
+
+    const handleTouchEnd = useCallback(
+        (e: React.TouchEvent) => {
+            // Always prevent the 300ms synthetic mouse/click events on touch devices
+            e.preventDefault();
+
+            if (longPressTimer.current) {
+                clearTimeout(longPressTimer.current);
+                longPressTimer.current = null;
+            }
+            setPressed(false);
+
+            // Check if touch moved significantly (scroll gesture) — cancel single-click
+            if (touchStartPos.current) {
+                const touch = e.changedTouches[0];
+                const dx = Math.abs(touch.clientX - touchStartPos.current.x);
+                const dy = Math.abs(touch.clientY - touchStartPos.current.y);
+                touchStartPos.current = null;
+                if (dx > 10 || dy > 10) {
+                    // User was scrolling, do not trigger action
+                    return;
+                }
+            }
+
+            if (!didLongPress.current && !didContextMenu.current && !isMenuOpen) {
+                triggerRipple();
+                onSingleClick(episode.episode_number);
+            }
+            didContextMenu.current = false;
+        },
+        [episode.episode_number, isMenuOpen, onSingleClick, triggerRipple]
+    );
+
+    const handleTouchMove = useCallback(
+        (e: React.TouchEvent) => {
+            // If the finger moved, cancel the long press timer
+            if (longPressTimer.current && touchStartPos.current) {
+                const touch = e.touches[0];
+                const dx = Math.abs(touch.clientX - touchStartPos.current.x);
+                const dy = Math.abs(touch.clientY - touchStartPos.current.y);
+                if (dx > 10 || dy > 10) {
+                    clearTimeout(longPressTimer.current);
+                    longPressTimer.current = null;
+                    setPressed(false);
+                }
+            }
+        },
+        []
+    );
+
     const handleContextMenu = useCallback(
         (e: React.MouseEvent) => {
             e.preventDefault();
-            didContextMenu.current = true; // prevent immediate click trigger
+            didContextMenu.current = true;
             triggerRipple();
             setAnchorEl(e.currentTarget as HTMLElement);
         },
         [triggerRipple]
     );
+
     const primary = theme.palette.primary.main;
 
     return (
         <>
+            {/* Tooltip only shown on pointer:fine (desktop) devices */}
             <Tooltip
-            title={
-                <Box>
-                    <Typography variant="caption" fontWeight={600}>
-                        第 {episode.episode_number} 集
-                    </Typography>
-                    {episode.name && episode.name !== `第 ${episode.episode_number} 集` && (
-                        <Typography variant="caption" display="block" sx={{ opacity: 0.8 }}>
-                            {episode.name}
+                title={
+                    <Box>
+                        <Typography variant="caption" fontWeight={600}>
+                            第 {episode.episode_number} 集
                         </Typography>
-                    )}
-                    <Typography variant="caption" display="block" sx={{ opacity: 0.6, mt: 0.3 }}>
-                        长按/右键打开菜单
-                    </Typography>
-                </Box>
-            }
-            placement="top"
-            arrow
-        >
+                        {episode.name && episode.name !== `第 ${episode.episode_number} 集` && (
+                            <Typography variant="caption" display="block" sx={{ opacity: 0.8 }}>
+                                {episode.name}
+                            </Typography>
+                        )}
+                        <Typography variant="caption" display="block" sx={{ opacity: 0.6, mt: 0.3 }}>
+                            长按/右键打开菜单
+                        </Typography>
+                    </Box>
+                }
+                placement="top"
+                arrow
+                // Disable Tooltip on touch devices to avoid interference
+                disableFocusListener
+                disableTouchListener
+            >
             <Box
                 component="button"
-                onMouseDown={handlePressStart}
-                onMouseUp={handlePressEnd}
+                onMouseDown={handleMouseDown}
+                onMouseUp={handleMouseUp}
                 onMouseLeave={() => {
                     if (longPressTimer.current) {
                         clearTimeout(longPressTimer.current);
@@ -133,8 +205,9 @@ const EpisodeCell: React.FC<EpisodeCellProps> = ({
                     }
                     setPressed(false);
                 }}
-                onTouchStart={handlePressStart}
-                onTouchEnd={handlePressEnd}
+                onTouchStart={handleTouchStart}
+                onTouchEnd={handleTouchEnd}
+                onTouchMove={handleTouchMove}
                 onContextMenu={handleContextMenu}
                 sx={{
                     position: 'relative',
@@ -174,9 +247,14 @@ const EpisodeCell: React.FC<EpisodeCellProps> = ({
                     '@media (pointer: coarse)': {
                         width: 44,
                         height: 44,
-                        minWidth: 44
+                        minWidth: 44,
                     },
-                    touchAction: 'none', // Critical for dragging vs clicking reliability
+                    // Allow pan-y scrolling but prevent default tap delay;
+                    // touchAction: 'none' would block scroll — use manipulation instead
+                    touchAction: 'manipulation',
+                    WebkitTapHighlightColor: 'transparent',
+                    userSelect: 'none',
+                    WebkitUserSelect: 'none',
                 }}
                 aria-label={`第 ${episode.episode_number} 集${watched ? '（已看）' : ''}`}
                 aria-pressed={watched}
@@ -192,6 +270,7 @@ const EpisodeCell: React.FC<EpisodeCellProps> = ({
                         fontSize: '10px',
                         lineHeight: 1,
                         userSelect: 'none',
+                        pointerEvents: 'none',
                     }}
                 >
                     {episode.episode_number}

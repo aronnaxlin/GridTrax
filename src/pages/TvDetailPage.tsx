@@ -128,7 +128,8 @@ const TvDetailPage: React.FC = () => {
                                     src={getPosterUrl(show.poster_path, 'w342')}
                                     alt={show.name}
                                     sx={{
-                                        width: { xs: 100, sm: 140 },
+                                        width: { xs: 160, sm: 140 },
+                                        maxWidth: { xs: '55vw', sm: 'none' },
                                         aspectRatio: '2/3',
                                         objectFit: 'cover',
                                         borderRadius: 2,
